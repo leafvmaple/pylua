@@ -1,0 +1,373 @@
+"""Lua VM operators implementation."""
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Optional
+
+from structs.instruction import Instruction
+from lua_value import Value
+from lua_table import Table
+from lua_function import LClosure
+
+if TYPE_CHECKING:
+    from lua_state import LuaState
+
+class CheckNumber:
+    @staticmethod
+    def check(val: Value) -> bool:
+        val.conv_str_to_number()
+        if val.is_number():
+            return True
+        return False
+    
+    def checks(va: Value, vb: Value) -> bool:
+        return CheckNumber.check(va) and CheckNumber.check(vb)
+
+
+class CompareCheck:
+    @staticmethod
+    def checks(va: Value, vb: Value) -> bool:
+        if va.is_number() and vb.is_number():
+            return True
+        if va.is_string() and vb.is_string():
+            return True
+        return False
+
+
+class ArithOperator:
+    op: callable
+    check: CheckNumber
+    meta: str
+
+    def __init__(self, op: callable, check: CheckNumber, meta: str):
+        self.op = op
+        self.meta = meta
+        self.check = check
+
+    def solve(self, L: LuaState, a: int, b: Optional[int] = None) -> Value | bool:
+        va = L._get_rk(a)
+        mt = va.get_metatable()
+        if b is None:
+            if self.check.check(va) is not None:
+                return Value.number(self.op(va.value))
+            else:
+                if mt:
+                    meta_func = mt.get(Value.string(self.meta))
+                    if meta_func and meta_func.is_function():
+                        return L._luacall(meta_func.value, va)
+        else:
+            vb = L._get_rk(b)
+            if self.check.checks(va, vb):
+                return Value.number(self.op(va.value, vb.value))
+            else:
+                if mt is None:
+                    mt = vb.get_metatable()
+                if mt:
+                    meta_func = mt.get(Value.string(self.meta))
+                    if meta_func and meta_func.is_function():
+                        return L._luacall(meta_func.value, va, vb)
+        return False
+
+    def arith(self, L: LuaState, idx: int, a: int, b: Optional[int] = None):
+        res = self.solve(L, a, b)
+        if res:
+            L.stack[idx] = res
+        else:
+            raise TypeError("arithmetic error")
+
+    def compare(self, L: LuaState, a: int, b: int) -> bool:
+        res = self.solve(L, a, b)
+        if type(res) is Value and res.is_boolean():
+            return res.value
+        return False
+
+
+ARITH = {
+    "ADD": ArithOperator(lambda a, b: a + b , CheckNumber, "__add"),
+    "SUB": ArithOperator(lambda a, b: a - b , CheckNumber, "__sub"),
+    "MUL": ArithOperator(lambda a, b: a * b , CheckNumber, "__mul"),
+    "DIV": ArithOperator(lambda a, b: a / b , CheckNumber, "__div"),
+    "MOD": ArithOperator(lambda a, b: a % b , CheckNumber, "__mod"),
+    "POW": ArithOperator(lambda a, b: a ** b, CheckNumber, "__pow"),
+    "UNM": ArithOperator(lambda a: -a       , CheckNumber, "__unm"),
+    "BNOT": ArithOperator(lambda a: ~a      , CheckNumber, "__bnot"),
+
+    "EQ": ArithOperator(lambda a, b: a == b , CompareCheck, "__eq"),
+    "LT": ArithOperator(lambda a, b: a < b  , CompareCheck, "__lt"),
+    "LE": ArithOperator(lambda a, b: a <= b , CompareCheck, "__le"),
+}
+
+
+class Operator:
+    @staticmethod
+    def MOVE(inst: Instruction, state: LuaState):
+        a, b, _ = inst.abc()
+        state.stack[a] = state.stack[b]
+
+    @staticmethod
+    def LOADK(inst: Instruction, state: LuaState):
+        a, bx = inst.abx()
+        state.stack[a] = state.func.consts[bx]
+
+    @staticmethod
+    def LOADBOOL(inst: Instruction, state: LuaState):
+        a, b, c = inst.abc()
+        state.stack[a] = Value.boolean(bool(b))
+        if c != 0:
+            state.call_info[-1].pc += 1
+
+    @staticmethod
+    def LOADNIL(inst: Instruction, state: LuaState):
+        a, b, _ = inst.abc()
+        for i in range(a, b + 1):
+            state.stack[i] = Value.nil()
+
+    @staticmethod
+    def GETUPVAL(inst: Instruction, state: LuaState):
+        a, b, _ = inst.abc()
+        closure = state.call_info[-1]
+        if b < len(closure.upvalues):
+            state.stack[a] = closure.upvalues[b]
+        else:
+            state.stack[a] = Value.nil()
+
+    @staticmethod
+    def GETGLOBAL(inst: Instruction, state: LuaState):
+        a, bx = inst.abx()
+        name = state.func.consts[bx].value
+        state.stack[a] = state.get_global(name)
+
+    @staticmethod
+    def GETTABLE(inst: Instruction, state: LuaState):
+        a, b, c = inst.abc()
+        table_value = state.stack[b]
+        key = state._get_rk(c)
+        if table_value.is_table():
+            result = state.gettable(b, key)
+            state.stack[a] = result if result is not None else Value.nil()
+        else:
+            state.stack[a] = Value.nil()
+
+    @staticmethod
+    def SETGLOBAL(inst: Instruction, state: LuaState):
+        a, bx = inst.abx()
+        name = state.func.consts[bx].value
+        state.set_global(name, state.stack[a])
+
+    @staticmethod
+    def SETUPVAL(inst: Instruction, state: LuaState):
+        a, b, _ = inst.abc()
+        closure = state.call_info[-1]
+        if b < len(closure.upvalues):
+            closure.upvalues[b] = state.stack[a]
+
+    @staticmethod
+    def SETTABLE(inst: Instruction, state: LuaState):
+        a, b, c = inst.abc()
+        table_value = state.stack[a]
+        key = state._get_rk(b)
+        value = state._get_rk(c)
+        if table_value.is_table():
+            table_value.value.set(key, value)
+
+    @staticmethod
+    def NEWTABLE(inst: Instruction, state: LuaState):
+        a, _, _ = inst.abc()
+        state.stack[a] = Value.table(Table())
+
+    @staticmethod
+    def SELF(inst: Instruction, state: LuaState):
+        a, b, c = inst.abc()
+        state.stack[a + 1] = state.stack[b]
+        key = state._get_rk(c)
+        result = state.gettable(b, key)
+        state.stack[a] = result if result is not None else Value.nil()
+
+    @staticmethod
+    def ADD(inst: Instruction, state: LuaState):
+        a, b, c = inst.abc()
+        ARITH["ADD"].arith(state, a, b, c)
+
+    @staticmethod
+    def SUB(inst: Instruction, state: LuaState):
+        a, b, c = inst.abc()
+        ARITH["SUB"].arith(state, a, b, c)
+
+    @staticmethod
+    def MUL(inst: Instruction, state: LuaState):
+        a, b, c = inst.abc()
+        ARITH["MUL"].arith(state, a, b, c)
+
+    @staticmethod
+    def DIV(inst: Instruction, state: LuaState):
+        a, b, c = inst.abc()
+        ARITH["DIV"].arith(state, a, b, c)
+
+    @staticmethod
+    def MOD(inst: Instruction, state: LuaState):
+        a, b, c = inst.abc()
+        ARITH["MOD"].arith(state, a, b, c)
+
+    @staticmethod
+    def POW(inst: Instruction, state: LuaState):
+        a, b, c = inst.abc()
+        ARITH["POW"].arith(state, a, b, c)
+
+    @staticmethod
+    def UNM(inst: Instruction, state: LuaState):
+        a, b, _ = inst.abc()
+        ARITH["UNM"].arith(state, a, b)
+
+    @staticmethod
+    def NOT(inst: Instruction, state: LuaState):
+        a, b, _ = inst.abc()
+        state.stack[a] = Value.boolean(not state.stack[b].get_boolean())
+
+    @staticmethod
+    def LEN(inst: Instruction, state: LuaState):
+        a, b, _ = inst.abc()
+        state.stack[a] = Value.number(state.len(b))
+
+    @staticmethod
+    def CONCAT(inst: Instruction, state: LuaState):
+        a, b, c = inst.abc()
+        result = ""
+        for i in range(b, c + 1):
+            val = state.stack[i]
+            val.conv_number_to_str()
+            if val.is_string():
+                result += val.value
+        state.stack[a] = Value.string(result)
+
+    @staticmethod
+    def JMP(inst: Instruction, state: LuaState):
+        _, sbx = inst.asbx()
+        state.jump(sbx)
+
+    @staticmethod
+    def EQ(inst: Instruction, state: LuaState):
+        a, b, c = inst.abc()
+        if ARITH["EQ"].compare(state, b, c) == (a != 0):
+            inst = state.fetch(); assert inst.op_name() == "JMP"
+            Operator.JMP(inst, state)
+        else:
+            state.call_info[-1].pc += 1
+
+    @staticmethod
+    def LT(inst: Instruction, state: LuaState):
+        a, b, c = inst.abc()
+        if ARITH["LT"].compare(state, b, c) == (a != 0):
+            inst = state.fetch(); assert inst.op_name() == "JMP"
+            Operator.JMP(inst, state)
+        else:
+            state.call_info[-1].pc += 1
+
+    @staticmethod
+    def LE(inst: Instruction, state: LuaState):
+        a, b, c = inst.abc()
+        if ARITH["LE"].compare(state, b, c) == (a != 0):
+            inst = state.fetch(); assert inst.op_name() == "JMP"
+            Operator.JMP(inst, state)
+        else:
+            state.call_info[-1].pc += 1
+
+    @staticmethod
+    def TEST(inst: Instruction, state: LuaState):
+        a, _, c = inst.abc()
+        if state.stack[a].get_boolean() == bool(c):
+            state.jump(1)
+
+    @staticmethod
+    def TESTSET(inst: Instruction, state: LuaState):
+        a, b, c = inst.abc()
+        if state.stack[b].get_boolean() == (c != 0):
+            state.call_info[-1].pc += 1
+        else:
+            state.stack[a] = state.stack[b]
+            state.jump(1)
+
+    @staticmethod
+    def CALL(inst: Instruction, state: LuaState):
+        a, b, c = inst.abc()
+        nargs = b - 1 if b != 0 else len(state.stack) - a - 1
+        nrets = c - 1
+        state.call(a, nargs, nrets)
+
+    @staticmethod
+    def TAILCALL(inst: Instruction, state: LuaState):
+        a, b, _ = inst.abc()
+        nargs = b - 1 if b != 0 else len(state.stack) - a - 1
+        state.call(a, nargs, -1)
+
+    @staticmethod
+    def RETURN(inst: Instruction, state: LuaState):
+        a, b, _ = inst.abc()
+        ret_count = b - 1 if b != 0 else len(state.stack) - a
+        state.poscall(a, ret_count)
+
+    @staticmethod
+    def FORLOOP(inst: Instruction, state: LuaState):
+        a, sbx = inst.asbx()
+        step = state.stack[a + 2]
+        idx = state.stack[a]
+        idx.value += step.value
+        limit = state.stack[a + 1]
+        
+        if (step.value > 0 and idx.value <= limit.value) or \
+           (step.value <= 0 and idx.value >= limit.value):
+            state.jump(sbx)
+            state.stack[a + 3] = idx
+
+    @staticmethod
+    def FORPREP(inst: Instruction, state: LuaState):
+        a, sbx = inst.asbx()
+        init = state.stack[a]
+        step = state.stack[a + 2]
+        init.value -= step.value
+        state.jump(sbx)
+
+    @staticmethod
+    def TFORLOOP(inst: Instruction, state: LuaState):
+        a, _, c = inst.abc()
+        state.stack[a + 3] = state.stack[a]
+        state.stack[a + 4] = state.stack[a + 1]
+        state.stack[a + 5] = state.stack[a + 2]
+        state.call(a + 3, 2, c)
+        if not state.stack[a + 3].is_nil():
+            state.stack[a + 2] = state.stack[a + 3]
+        else:
+            state.jump(1)
+
+    @staticmethod
+    def SETLIST(inst: Instruction, state: LuaState):
+        a, b, c = inst.abc()
+        table = state.stack[a]
+        if not table.is_table():
+            raise TypeError("SETLIST expects a table")
+        
+        n = b if b != 0 else len(state.stack) - a - 1
+        base = (c - 1) * 50
+        
+        for i in range(1, n + 1):
+            table.value.set(base + i, state.stack[a + i])
+
+    @staticmethod
+    def CLOSE(inst: Instruction, state: LuaState):
+        pass
+
+    @staticmethod
+    def CLOSURE(inst: Instruction, state: LuaState):
+        a, bx = inst.abx()
+        proto = state.func.protos[bx]
+        closure = LClosure.from_proto(proto)
+        state.stack[a] = Value.closure(closure)
+
+    @staticmethod
+    def VARARG(inst: Instruction, state: LuaState):
+        a, b, _ = inst.abc()
+        closure = state.call_info[-1]
+        n = b - 1 if b != 0 else len(closure.varargs)
+        for i in range(n):
+            if i < len(closure.varargs):
+                state.stack[a + i] = closure.varargs[i]
+            else:
+                state.stack[a + i] = Value.nil()
