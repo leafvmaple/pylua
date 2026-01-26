@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 from .lua_lexer import Lexer
-from .lua_exp import Expr, NameExp, FuncCallExp, TrueExp, NameExp, FuncDefExp, TableAccessExp
+from .lua_exp import Expr, NameExpr, FuncCallExpr, TrueExpr, FuncDefExpr, TableAccessExpr
 
 if TYPE_CHECKING:
     from .lua_block import Block
@@ -14,49 +14,49 @@ if TYPE_CHECKING:
 from codegen.func import FuncInfo
 from codegen.inst import CodegenInst
 
-class Stat:
+class Stmt:
     """Base class for all Lua statements."""
     
-    @staticmethod
-    def parse(lexer: Lexer) -> Stat:
+    @classmethod
+    def parse(cls, lexer: Lexer) -> Stmt:
         """Parse a statement based on the current token."""        
         token = lexer.current()
         
         # Empty statement
         if token.type == "SEMICOLON":
-            return EmptyStat.parse(lexer)
+            return EmptyStmt.parse(lexer)
         
         # Break statement
         elif token.type == "BREAK":
-            return BreakStat.parse(lexer)
+            return BreakStmt.parse(lexer)
         
         # Do block
         elif token.type == "DO":
-            return DoStat.parse(lexer)
+            return DoStmt.parse(lexer)
         
         # While loop
         elif token.type == "WHILE":
-            return WhileStat.parse(lexer)
+            return WhileStmt.parse(lexer)
         
         # Repeat-until loop
         elif token.type == "REPEAT":
-            return RepeatStat.parse(lexer)
+            return RepeatStmt.parse(lexer)
         
         # If statement
         elif token.type == "IF":
-            return IfStat.parse(lexer)
+            return IfStmt.parse(lexer)
         
         # For loop (numeric or iterator)
         elif token.type == "FOR":
-            return ForStat.parse(lexer)
+            return ForStmt.parse(lexer)
         
         # Function definition
         elif token.type == "FUNCTION":
-            return AssignStat.parse_func(lexer)
+            return AssignStmt.parse_func(lexer)
         
         # Local declaration
         elif token.type == "LOCAL":
-            return LocalStat.parse(lexer)
+            return LocalStmt.parse(lexer)
         
         # Return statement (should not be called directly)
         elif token.type == "RETURN":
@@ -65,9 +65,9 @@ class Stat:
         # Assignment or function call
         else:
             prefix = Expr.parse_prefix(lexer)
-            if type(prefix) is FuncCallExp:
-                return prefix
-            return AssignStat.parse(lexer, prefix)
+            if type(prefix) is FuncCallExpr:
+                return FuncCallStmt(prefix)
+            return AssignStmt.parse_with_first(lexer, prefix)
         
     def codegen(self, info: FuncInfo):
         """Generate code for the statement."""
@@ -83,9 +83,9 @@ class Stat:
 # Simple Statements
 # ============================================================================
 
-class EmptyStat(Stat):
+class EmptyStmt(Stmt):
     @classmethod
-    def parse(cls, lexer: Lexer) -> EmptyStat:
+    def parse(cls, lexer: Lexer) -> EmptyStmt:
         lexer.consume("SEMICOLON")
         return cls()
     
@@ -94,7 +94,7 @@ class EmptyStat(Stat):
 
 
 # TODO
-class BreakStat(Stat):
+class BreakStmt(Stmt):
     """Break statement."""
     line: int
 
@@ -102,7 +102,7 @@ class BreakStat(Stat):
         self.line = line
 
     @classmethod
-    def parse(cls, lexer: Lexer) -> BreakStat:
+    def parse(cls, lexer: Lexer) -> BreakStmt:
         token = lexer.consume("BREAK")
         return cls(token.line)
     
@@ -112,20 +112,31 @@ class BreakStat(Stat):
         CodegenInst.jmp(info, 0)
 
 
-class ReturnStat(Stat):
+class ReturnStmt(Stmt):
     @staticmethod
     def parse_list(lexer: Lexer) -> list[Expr]:
         lexer.consume("RETURN")
         if (token := lexer.current()) and token.type != "SEMICOLON" and not token.is_end():
             return Expr.parse_list(lexer)
         return []
+    
+
+class FuncCallStmt(Stmt):
+    func_call: FuncCallExpr
+
+    def __init__(self, func_call: FuncCallExpr):
+        self.func_call = func_call
+    
+    def codegen(self, info: FuncInfo):
+        self.func_call.codegen(info)
+        info.free_reg()
 
 
 # ============================================================================
 # Block Statements
 # ============================================================================
 
-class DoStat(Stat):
+class DoStmt(Stmt):
     """Do-end block statement."""
     block: Block
 
@@ -133,7 +144,7 @@ class DoStat(Stat):
         self.block = block
 
     @classmethod
-    def parse(cls, lexer: Lexer) -> DoStat:
+    def parse(cls, lexer: Lexer) -> DoStmt:
         from .lua_block import Block
 
         lexer.consume("DO")
@@ -147,7 +158,7 @@ class DoStat(Stat):
         info.exit_scope()
 
 
-class WhileStat(Stat):
+class WhileStmt(Stmt):
     """While loop statement."""
     exp: Expr
     block: Block
@@ -157,7 +168,7 @@ class WhileStat(Stat):
         self.block = block
 
     @classmethod
-    def parse(cls, lexer: Lexer) -> WhileStat:
+    def parse(cls, lexer: Lexer) -> WhileStmt:
         from .lua_block import Block
 
         lexer.consume("WHILE")
@@ -192,7 +203,7 @@ class WhileStat(Stat):
         info.insts[pc_jmp].set_sbx(pc_end - pc_jmp - 1)
 
 
-class RepeatStat(Stat):
+class RepeatStmt(Stmt):
     """Repeat-until loop statement."""
     block: Block
     exp: Expr
@@ -202,7 +213,7 @@ class RepeatStat(Stat):
         self.exp = exp
 
     @classmethod
-    def parse(cls, lexer: Lexer) -> RepeatStat:
+    def parse(cls, lexer: Lexer) -> RepeatStmt:
         from .lua_block import Block
 
         lexer.consume("REPEAT")
@@ -230,7 +241,7 @@ class RepeatStat(Stat):
         info.free_reg()
 
 
-class IfStat(Stat):
+class IfStmt(Stmt):
     """If-then-elseif-else-end statement."""
     exps: list[Expr]
     blocks: list[Block]
@@ -240,12 +251,12 @@ class IfStat(Stat):
         self.blocks = blocks
     
     @classmethod
-    def parse(cls, lexer: Lexer) -> IfStat:
+    def parse(cls, lexer: Lexer) -> IfStmt:
         """Parse if-then-elseif-else-end statement."""
         from .lua_block import Block
 
-        exps = []
-        blocks = []
+        exps: list[Expr] = []
+        blocks: list[Block] = []
         
         lexer.consume("IF")
         exps.append(Expr.parse(lexer))
@@ -262,14 +273,14 @@ class IfStat(Stat):
         # Handle else clause
         if lexer.current().type == "ELSE":
             lexer.consume("ELSE")
-            exps.append(TrueExp())  # Use TrueExp as condition for else
+            exps.append(TrueExpr())  # Use TrueExp as condition for else
             blocks.append(Block.parse(lexer))
         
         lexer.consume("END")
         return cls(exps, blocks)
     
     def codegen(self, info: FuncInfo):
-        jmp_to_ends = []
+        jmp_to_ends: list[int] = []
         
         for i in range(len(self.exps)):
             # Evaluate condition (skip for else clause with TrueExp)
@@ -289,75 +300,73 @@ class IfStat(Stat):
             info.enter_scope()
             self.blocks[i].codegen(info)
             info.exit_scope()
-            
-            # Jump to end after executing block
+
             if i < len(self.exps) - 1:
                 jmp_to_ends.append(info.current_pc())
                 CodegenInst.jmp(info, 0)  # Placeholder
-            
-            # Patch jump to next condition/block
+
             if pc_jmp_to_next is not None:
                 pc_next = info.current_pc()
-                info.insts[pc_jmp_to_next] = info.insts[pc_jmp_to_next] | ((pc_next - pc_jmp_to_next - 1) << 14)
+                info.insts[pc_jmp_to_next].set_sbx((pc_next - pc_jmp_to_next - 1) << 14)
         
         # Patch all jumps to end
         pc_end = info.current_pc()
         for jmp_pc in jmp_to_ends:
-            info.insts[jmp_pc] = info.insts[jmp_pc] | ((pc_end - jmp_pc - 1) << 14)
+            info.insts[jmp_pc].set_sbx((pc_end - jmp_pc - 1) << 14)
 
 # ============================================================================
 # Loop Statements
 # ============================================================================
 
-class ForStat(Stat):
-    @staticmethod
-    def parse(lexer: Lexer) -> ForNumStat | ForInStat:
+class ForStmt(Stmt):
+    @classmethod
+    def parse(cls, lexer: Lexer) -> ForNumStat | ForInStat:
         lexer.consume("FOR")
-        varname = NameExp.parse(lexer)
+        varname = NameExpr.parse(lexer)
         
         # After parsing first variable, check what follows
         if lexer.current().type == "ASSIGN":
-            return ForNumStat.parse(lexer, varname)
+            return ForNumStat.parse_with_name(lexer, varname)
         else:  # COMMA or IN
-            return ForInStat.parse(lexer, varname)
+            return ForInStat.parse_with_name(lexer, varname)
         
     def codegen(self, info: FuncInfo):
         # This should never be called as parse() returns ForNumStat or ForInStat
         raise RuntimeError("ForStat.codegen should not be called directly")
 
 
-class ForNumStat(Stat):
+class ForNumStat(Stmt):
     """for var = init, limit [, step] do ... end"""
-    varname: NameExp
-    initexp: Expr
-    limitexp: Expr
-    stepexp: Expr | None
+    varname: NameExpr
+    init_expr: Expr
+    limit_expr: Expr
+    step_expr: Expr | None
     block: Block
 
-    def __init__(self, varname: NameExp, initexp: Expr, limitexp: Expr, stepexp: Expr | None, block: Block):
+    def __init__(self, varname: NameExpr, init_expr: Expr, limit_expr: Expr, step_expr: Expr | None, block: Block):
         self.varname = varname
-        self.initexp = initexp
-        self.limitexp = limitexp
-        self.stepexp = stepexp
+        self.init_expr = init_expr
+        self.limit_expr = limit_expr
+        self.step_expr = step_expr
         self.block = block
 
     @classmethod
-    def parse(cls, lexer: Lexer, varname: NameExp) -> ForNumStat:
+    def parse_with_name(cls, lexer: Lexer, varname: NameExpr) -> ForNumStat:
         from .lua_block import Block
         lexer.consume("ASSIGN")
-        initexp = Expr.parse(lexer)
+        init_expr = Expr.parse(lexer)
         lexer.consume("COMMA")
-        limitexp = Expr.parse(lexer)
+        limit_expr = Expr.parse(lexer)
         
-        stepexp = None
+        step_expr = None
         if lexer.current().type == "COMMA":
-            lexer.consume()
-            stepexp = Expr.parse(lexer)
+            lexer.consume("COMMA")
+            step_expr = Expr.parse(lexer)
         
         lexer.consume("DO")
         block = Block.parse(lexer)
         lexer.consume("END")
-        return cls(varname, initexp, limitexp, stepexp, block)
+        return cls(varname, init_expr, limit_expr, step_expr, block)
     
     def codegen(self, info: FuncInfo):
         info.enter_scope()
@@ -368,16 +377,16 @@ class ForNumStat(Stat):
         step_reg = info.alloc_reg()
         
         # Initialize loop variables
-        self.initexp.codegen(info, idx_reg)
-        self.limitexp.codegen(info, limit_reg)
-        if self.stepexp:
-            self.stepexp.codegen(info, step_reg)
+        self.init_expr.codegen(info, idx_reg)
+        self.limit_expr.codegen(info, limit_reg)
+        if self.step_expr:
+            self.step_expr.codegen(info, step_reg)
         else:
             # Default step is 1
             CodegenInst.load_k(info, step_reg, 1)
         
         # Add loop variable to scope
-        loop_var = info.add_local_var(self.varname.name)
+        info.add_local_var(self.varname.name)
         
         # FORPREP instruction
         pc_forprep = info.current_pc()
@@ -388,33 +397,33 @@ class ForNumStat(Stat):
         
         # FORLOOP instruction
         pc_forloop = info.current_pc()
-        CodegenInst.forloop(info, idx_reg, pc_forprep - pc_forloop - 1)
-        
-        # Patch FORPREP to jump past FORLOOP
-        info.insts[pc_forprep] = (info.insts[pc_forprep] & 0x3FFF) | ((pc_forloop - pc_forprep) << 14)
+        offset = pc_forloop - pc_forprep
+
+        CodegenInst.forloop(info, idx_reg, -offset)
+        info.insts[pc_forprep].set_sbx(offset -1)
         
         info.exit_scope()
 
 
-class ForInStat(Stat):
-    """for vars in explist do ... end"""
-    varnames: list[NameExp]
+class ForInStat(Stmt):
+    """for vars in expr list do ... end"""
+    var_names: list[NameExpr]
     exps: list[Expr]
     block: Block
 
-    def __init__(self, varnames: list[NameExp], exps: list[Expr], block: Block):
-        self.varnames = varnames
+    def __init__(self, var_names: list[NameExpr], exps: list[Expr], block: Block):
+        self.var_names = var_names
         self.exps = exps
         self.block = block
 
     @classmethod
-    def parse(cls, lexer: Lexer, first_var: NameExp) -> ForInStat:
+    def parse_with_name(cls, lexer: Lexer, first_var: NameExpr) -> ForInStat:
         from .lua_block import Block
 
-        varnames = [first_var]
+        var_names = [first_var]
         while lexer.current().type == "COMMA":
             lexer.consume()
-            varnames.append(NameExp.parse(lexer))
+            var_names.append(NameExpr.parse(lexer))
         
         lexer.consume("IN")
         exps = Expr.parse_list(lexer)
@@ -423,7 +432,7 @@ class ForInStat(Stat):
         block = Block.parse(lexer)
         lexer.consume("END")
 
-        return cls(varnames, exps, block)
+        return cls(var_names, exps, block)
     
     def codegen(self, info: FuncInfo):
         info.enter_scope()
@@ -438,12 +447,12 @@ class ForInStat(Stat):
             exp.codegen(info, iter_reg + i)
         
         # Add loop variables to scope
-        for varname in self.varnames:
+        for varname in self.var_names:
             info.add_local_var(varname.name)
         
         # TFORLOOP instruction
         pc_tforloop = info.current_pc()
-        CodegenInst.tforloop(info, iter_reg, len(self.varnames))
+        CodegenInst.tforloop(info, iter_reg, len(self.var_names))
         
         pc_jmp_to_end = info.current_pc()
         CodegenInst.jmp(info, 0)  # Placeholder
@@ -456,7 +465,7 @@ class ForInStat(Stat):
         
         # Patch jump to end
         pc_end = info.current_pc()
-        info.insts[pc_jmp_to_end] = info.insts[pc_jmp_to_end] | ((pc_end - pc_jmp_to_end - 1) << 14)
+        info.insts[pc_jmp_to_end].set_sbx((pc_end - pc_jmp_to_end - 1) << 14)
         
         info.exit_scope()
 
@@ -465,9 +474,9 @@ class ForInStat(Stat):
 # Declaration and Assignment Statements
 # ============================================================================
 
-class LocalStat(Stat):
-    @staticmethod
-    def parse(lexer: Lexer) -> LocalVarDeclStat | LocalFuncDefStat:
+class LocalStmt(Stmt):
+    @classmethod
+    def parse(cls, lexer: Lexer) -> LocalVarDeclStat | LocalFuncDefStat:
         lexer.consume("LOCAL")
         
         if lexer.current().type == "FUNCTION":
@@ -476,49 +485,49 @@ class LocalStat(Stat):
             return LocalVarDeclStat.parse(lexer)
 
 
-class LocalVarDeclStat(Stat):
-    """local vars [= explist]"""
-    varnames: list[NameExp]
+class LocalVarDeclStat(Stmt):
+    """local vars [= exp list]"""
+    var_names: list[NameExpr]
     exps: list[Expr]
 
-    def __init__(self, varnames: list[NameExp], exps: list[Expr]):
-        self.varnames = varnames
+    def __init__(self, var_names: list[NameExpr], exps: list[Expr]):
+        self.var_names = var_names
         self.exps = exps
 
     @classmethod
     def parse(cls, lexer: Lexer) -> LocalVarDeclStat:
-        varnames = [NameExp.parse(lexer)]
+        var_names = [NameExpr.parse(lexer)]
         while lexer.current().type == "COMMA":
             lexer.consume()
-            varnames.append(NameExp.parse(lexer))
+            var_names.append(NameExpr.parse(lexer))
 
         exps = []
         if lexer.current().type == "ASSIGN":
             lexer.consume()
             exps = Expr.parse_list(lexer)
         
-        return cls(varnames, exps)
+        return cls(var_names, exps)
     
     def codegen(self, info: FuncInfo):
-        for i in range(len(self.varnames)):
-            local = info.add_local_var(self.varnames[i].name)
+        for i in range(len(self.var_names)):
+            local = info.add_local_var(self.var_names[i].name)
             if i < len(self.exps):
                 self.exps[i].codegen(info, local.reg_idx)
             else:
                 CodegenInst.load_nil(info, local.reg_idx, 1)
 
 
-class AssignStat(Stat):
-    """varlist = explist"""
-    varlist: list[Expr]
-    explist: list[Expr]
+class AssignStmt(Stmt):
+    """varlist = expr list"""
+    var_list: list[Expr]
+    expr_list: list[Expr]
 
-    def __init__(self, varlist: list[Expr], explist: list[Expr]):
-        self.varlist = varlist
-        self.explist = explist
+    def __init__(self, varlist: list[Expr], expr_list: list[Expr]):
+        self.var_list = varlist
+        self.expr_list = expr_list
 
     @classmethod
-    def parse(cls, lexer: Lexer, first_var: Expr) -> AssignStat:
+    def parse_with_first(cls, lexer: Lexer, first_var: Expr) -> AssignStmt:
         varlist = [first_var]
         while lexer.current().type == "COMMA":
             lexer.consume()
@@ -530,85 +539,77 @@ class AssignStat(Stat):
         return cls(varlist, explist)
     
     @classmethod
-    def parse_func(cls, lexer: Lexer) -> AssignStat:
+    def parse_func(cls, lexer: Lexer) -> AssignStmt:
         """function [obj.]name[:method] body end"""
         lexer.consume("FUNCTION")
-        exp = NameExp.parse(lexer)
+        exp = NameExpr.parse(lexer)
 
         while lexer.current().type == "DOT":
-            exp = TableAccessExp.parse_dot(lexer, exp)
+            exp = TableAccessExpr.parse_dot(lexer, exp)
 
         # Handle obj:method (inserts 'self' as first parameter)
         colon = False
         if lexer.current().type == "COLON":
-            exp = TableAccessExp.parse_colon(lexer, exp)
+            exp = TableAccessExpr.parse_colon(lexer, exp)
             colon = True
         
-        return cls([exp], [FuncDefExp.parse(lexer, colon=colon)])
+        return cls([exp], [FuncDefExpr.parse(lexer, colon=colon)])
     
     def codegen(self, info: FuncInfo):
-        # Allocate registers for all RHS expressions
-        nexp = len(self.explist)
-        nvar = len(self.varlist)
-        
-        # Generate code for RHS expressions
-        exp_regs = []
-        for i in range(nexp):
+        num_exprs = len(self.expr_list)
+        num_vars = len(self.var_list)
+
+        exp_regs: list[int] = []
+        for i in range(num_exprs):
             reg = info.alloc_reg()
-            self.explist[i].codegen(info, reg)
+            self.expr_list[i].codegen(info, reg)
             exp_regs.append(reg)
         
-        # Assign to LHS variables
-        for i in range(nvar):
-            var = self.varlist[i]
-            if i < nexp:
+        for i in range(num_vars):
+            var = self.var_list[i]
+            if i < num_exprs:
                 val_reg = exp_regs[i]
             else:
-                # No value for this variable, assign nil
                 val_reg = info.alloc_reg()
                 CodegenInst.load_nil(info, val_reg, 1)
                 exp_regs.append(val_reg)
             
-            if isinstance(var, NameExp):
+            if isinstance(var, NameExpr):
                 local = info.get_local_var(var.name)
                 if local:
                     CodegenInst.move(info, local.reg_idx, val_reg)
                 else:
                     upval_idx = info.idx_of_upval(var.name)
                     if upval_idx is not None:
-                        CodegenInst.set_upvalue(info, val_reg, upval_idx)
+                        CodegenInst.set_upval(info, val_reg, upval_idx)
                     else:
-                        # Global variable
                         idx = info.idx_of_const(var.name)
                         CodegenInst.set_global(info, val_reg, idx)
-            elif isinstance(var, TableAccessExp):
+            elif isinstance(var, TableAccessExpr):
                 var.codegen_set(info, val_reg)
             else:
                 raise NotImplementedError(f"Assignment to {type(var).__name__} not implemented.")
-        
-        # Free all allocated registers
+
         for _ in exp_regs:
             info.free_reg()
 
-class LocalFuncDefStat(Stat):
-    """local function name funcbody end"""
-    name: NameExp
-    funcbody: FuncDefExp
+class LocalFuncDefStat(Stmt):
+    """local function name func body end"""
+    name: NameExpr
+    body: FuncDefExpr
 
-    def __init__(self, name: NameExp, funcbody: FuncDefExp):
+    def __init__(self, name: NameExpr, body: FuncDefExpr):
         self.name = name
-        self.funcbody = funcbody
+        self.body = body
 
     @classmethod
     def parse(cls, lexer: Lexer) -> LocalFuncDefStat:
         lexer.consume("FUNCTION")
-        name = NameExp.parse(lexer)
-        funcbody = FuncDefExp.parse(lexer)
-        return cls(name, funcbody)
+        name = NameExpr.parse(lexer)
+        body = FuncDefExpr.parse(lexer)
+        return cls(name, body)
     
     def codegen(self, info: FuncInfo):
-        # Add local variable first
         local = info.add_local_var(self.name.name)
-        # Generate function closure
-        self.funcbody.codegen(info, local.reg_idx)
+        self.body.codegen(info, local.reg_idx)
 

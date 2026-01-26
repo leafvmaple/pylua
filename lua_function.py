@@ -1,31 +1,39 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, TypeAlias
 
 from structs.instruction import Instruction
 
 if TYPE_CHECKING:
+    from lua_state import LuaState
     from lua_value import Value
 
 
+PyFunction: TypeAlias = Callable[[LuaState], int]
+
 class LocalVar:
     name: str
-    startpc: int
-    endpc: int
+    start_pc: int
+    end_pc: int
 
     def __str__(self) -> str:
-        return f"{self.name}\t{self.startpc + 1}\t{self.endpc + 1}"
+        return f"{self.name}\t{self.start_pc + 1}\t{self.end_pc + 1}"
 
 
 class Debug:
     lineinfos: list[int]
-    locvars: list[LocalVar]
+    loc_vars: list[LocalVar]
     upvalues: list[str]
 
+    def __init__(self):
+        self.lineinfos = []
+        self.loc_vars = []
+        self.upvalues = []
+
     def __str__(self) -> str:
-        parts = []
-        parts.append(f'locals ({len(self.locvars)}):')
-        parts.extend(f"\t{i}\t{value}" for i, value in enumerate(self.locvars))
+        parts: list[str] = []
+        parts.append(f'locals ({len(self.loc_vars)}):')
+        parts.extend(f"\t{i}\t{value}" for i, value in enumerate(self.loc_vars))
 
         parts.append(f'upvalues ({len(self.upvalues)}):')
         parts.extend(f"\t{i}\t{value}" for i, value in enumerate(self.upvalues))
@@ -36,22 +44,25 @@ class Debug:
 class Proto:
     source: str
     type: str = "main"
-    linedefined: int
+    line_defined: int
     lastlinedefined: int
-    nups: int
-    numparams: int
+    num_upvalues: int
+    num_params: int
     is_vararg: bool
-    maxstacksize: int
+    max_stack_size: int
     codes: list[Instruction]
     consts: list[Value]
     protos: list[Proto]
     debug: Debug
 
+    def __init__(self) -> None:
+        self.consts = []
+
     def __str__(self) -> str:
-        parts = []
-        parts.append(f"{self.type} <{self.source}:{self.linedefined},{self.lastlinedefined}> ({len(self.codes)} instructions)")
-        parts.append(f"{self.numparams} params, {self.maxstacksize} slots, {len(self.debug.upvalues)} upvalues, \
-                     {len(self.debug.locvars)} locals, {len(self.consts)} constants, {len(self.protos)} functions")
+        parts: list[str] = []
+        parts.append(f"{self.type} <{self.source}:{self.line_defined},{self.lastlinedefined}> ({len(self.codes)} instructions)")
+        parts.append(f"{self.num_params} params, {self.max_stack_size} slots, {len(self.debug.upvalues)} upvalues, \
+                     {len(self.debug.loc_vars)} locals, {len(self.consts)} constants, {len(self.protos)} functions")
         parts.extend(f"\t{pc + 1}\t{code}" for pc, code in enumerate(self.codes))
         parts.append(f'constants ({len(self.consts)}):')
         parts.extend(f"\t{i + 1}\t{value}" for i, value in enumerate(self.consts))
@@ -69,17 +80,17 @@ class Closure:
 class LClosure(Closure):
     varargs: list[Value]
     func: Proto
-    nrets: int  # number of expected return values
+    num_rets: int  # number of expected return values
     ret_idx: int
     pc: int
 
     def __init__(self, func: Proto):
         from lua_value import Value
-        self.stack = [Value()] * func.maxstacksize
-        self.upvalues = [Value()] * func.nups  # Initialize upvalues based on function prototype
+        self.stack = [Value.nil()] * func.max_stack_size
+        self.upvalues = [Value.nil()] * func.num_upvalues  # Initialize upvalues based on function prototype
         self.varargs = []
         self.func = func
-        self.nrets = 0
+        self.num_rets = 0
         self.pc = 0
 
     @classmethod
@@ -89,9 +100,9 @@ class LClosure(Closure):
     def fetch(self) -> Instruction | None:
         if self.pc >= len(self.func.codes):
             return None
-        instrution = self.func.codes[self.pc]
+        instruction = self.func.codes[self.pc]
         self.pc += 1
-        return instrution
+        return instruction
 
     # debug
     def print_stack(self):
@@ -99,13 +110,13 @@ class LClosure(Closure):
 
 
 class PClosure(Closure):
-    func: callable
+    func: PyFunction
 
-    def __init__(self, func: callable):
+    def __init__(self, func: PyFunction):
         self.func = func
         self.stack = []
         self.upvalues = []
 
     @classmethod
-    def from_function(cls, func: callable):
+    def from_function(cls, func: PyFunction):
         return cls(func)

@@ -33,10 +33,10 @@ KEYWORDS = {
 
 class Token:
     type: str
-    value: str | None
+    value: str
     line: int
 
-    def __init__(self, type: str, value: str | None, line: int):
+    def __init__(self, type: str, value: str, line: int):
         self.type = type
         self.value = value
         self.line = line
@@ -85,7 +85,7 @@ class Lexer:
         """
         self.skip_whitespace()
         if self.is_eof():
-            return Token("EOF", None, self._line)
+            return Token("EOF", '', self._line)
 
         char = self.peek_char()
 
@@ -224,7 +224,7 @@ class Lexer:
 
     def current(self) -> Token:
         if self.pos >= len(self.tokens):
-            return Token("EOF", None, self._line)
+            return Token("EOF", '', self._line)
         return self.tokens[self.pos]
 
     def lookahead(self) -> Token:

@@ -5,7 +5,7 @@ from lua_operator import Operator
 from structs.instruction import Instruction
 from lua_value import Value
 from lua_table import Table
-from lua_function import LClosure, PClosure, Proto
+from lua_function import LClosure, PClosure, Proto, PyFunction
 from lua_builtins import BUILTIN
 
 LUA_REGISTRY_INDEX = -10000
@@ -14,10 +14,10 @@ LUA_GLOBALS_INDEX = -10002
 
 LUA_OK = 0
 LUA_YIELD = 1
-LUA_ERRRUN = 2
-LUA_ERRSYNTAX = 3
-LUA_ERRMEM = 4
-LUA_ERRERR = 5
+LUA_ERR_RUN = 2
+LUA_ERR_SYNTAX = 3
+LUA_ERR_MEM = 4
+LUA_ERR_ERR = 5
 
 
 class LuaState:
@@ -31,15 +31,16 @@ class LuaState:
     mt: Table
 
     def __init__(self, main: Proto):
-        self.call_info = [LClosure.from_proto(main)]  # Pass Value as factory
+        call_info = LClosure.from_proto(main)
         self.registry = Table()
         key = Value.number(LUA_GLOBALS_INDEX)
-        self.registry.set(key, Value.table(Table()))
-        self.globals = self.registry.get(key).value
-        self.mt = Table()
 
-        self.func = self.call_info[-1].func
-        self.stack = self.call_info[-1].stack
+        self.globals = Table()
+        self.registry.set(key, Value.table(self.globals))
+        self.mt = Table()
+        self.call_info = [call_info] # Pass Value as factory
+        self.func = call_info.func
+        self.stack = call_info.stack
 
         # Register built-in functions
         self.register("print", BUILTIN.lua_print)
@@ -62,17 +63,21 @@ class LuaState:
 
     def push_closure(self, closure: LClosure | PClosure):
         self.call_info.append(closure)
-        self.func = self.call_info[-1].func
-        self.stack = self.call_info[-1].stack
+        assert type(closure) is LClosure
+        self.func = closure.func
+        self.stack = closure.stack
 
     def pop_closure(self) -> LClosure:
         frame = self.call_info.pop()
-        if len(self.call_info) > 0:
-            self.func = self.call_info[-1].func
-            self.stack = self.call_info[-1].stack
+        if self.call_info:
+            call_info = self.call_info[-1]
+            assert type(call_info) is LClosure
+            self.func = call_info.func
+            self.stack = call_info.stack
+        assert type(frame) is LClosure
         return frame
 
-    def register(self, name: str, func: callable):
+    def register(self, name: str, func: PyFunction):
         self.globals.set(Value.string(name), Value.closure(PClosure(func)))
 
     def _getmetatable(self, val: Value) -> Value | None:
@@ -82,7 +87,7 @@ class LuaState:
         else:
             return self.mt.get(Value.string(val.type_name()))
 
-    # external metamethods
+    # external meta methods
     def pop(self, n: int) -> None:
         for _ in range(n):
             self.stack.pop()
@@ -110,6 +115,8 @@ class LuaState:
         t = self._index2adr(idx)
         if not t.is_table():
             raise TypeError("rawget expects a table")
+        assert type(t.value) is Table
+
         key = self.stack[-1]
         value = t.value.get(key)
         if value is None:
@@ -127,8 +134,12 @@ class LuaState:
     def setmetatable(self, idx: int) -> None:
         obj = self._index2adr(idx)
         mt = self.stack[-1]
-        assert mt.is_table(), "Metatable must be a table"
+        if not mt.is_table():
+            raise TypeError("setmetatable expects a table as metatable")
+        assert type(mt.value) is Table
+
         if obj.is_table():
+            assert type(obj.value) is Table
             obj.value.setmetatable(mt.value)
         else:
             self.mt.set(Value.string(obj.type_name()), mt)
@@ -146,28 +157,28 @@ class LuaState:
 
     def gettable(self, idx: int, key: Value) -> Value:
         t = self.stack[idx]
-        # Delegate to Value's gettable method with callback
-        return t.gettable(key, self._luacall)
+        value = t.gettable(key, self._lua_call)
+        return value if value is not None else Value.nil()
 
     def len(self, idx: int) -> int:
         t = self.stack[idx]
-        # Delegate to Value's len method with callback
-        return t.len(self._luacall)
+        return t.len(self._lua_call)
 
     def call(self, idx: int, nargs: int, nrets: int):
         func_value = self.stack[idx]
         if func_value.is_function():
             if type(func_value.value) is LClosure:
-                self.precall(func_value.value, idx, nargs, nrets)
-                while self.excute():
+                self.pre_call(func_value.value, idx, nargs, nrets)
+                while self.execute():
                     pass
-            else:
-                self.pycall(func_value.value, idx, nargs, nrets)
+            elif type(func_value.value) is PClosure:
+                self.py_call(func_value.value, idx, nargs, nrets)
         elif func_value.is_table():
             mt = func_value.get_metatable()
             func_value = mt.get(Value("__call")) if mt else None
             if func_value and func_value.is_function():
-                self.stack[idx] = self._luacall(func_value.value, *self.stack[idx: idx + nargs + 1])
+                assert type(func_value.value) is LClosure
+                self.stack[idx] = self._lua_call(func_value.value, *self.stack[idx: idx + nargs + 1])
         else:
             raise TypeError("CALL error")
 
@@ -180,21 +191,21 @@ class LuaState:
                 self.pop_closure()
             self.stack.clear()
             self.pushvalue(Value.string(str(e)))
-            if e is RuntimeError:
-                return LUA_ERRRUN
-            elif e is SyntaxError:
-                return LUA_ERRSYNTAX
-            elif e is MemoryError:
-                return LUA_ERRMEM
+            if isinstance(e, RuntimeError):
+                return LUA_ERR_RUN
+            elif isinstance(e, SyntaxError):
+                return LUA_ERR_SYNTAX
+            elif isinstance(e, MemoryError):
+                return LUA_ERR_MEM
             else:
-                return LUA_ERRERR
+                return LUA_ERR_ERR
         return LUA_OK
 
     def error(self):
         value = self.stack[-1]
         raise RuntimeError(value.value)
 
-    def excute(self) -> bool:
+    def execute(self) -> bool:
         inst = self.fetch()
         if inst is None:
             return False
@@ -208,22 +219,22 @@ class LuaState:
             return False
         return True
 
-    def precall(self, closure: LClosure, func_idx: int = 0, nargs: int = 0, nrets: int = 0):
-        closure.stack = [Value.nil()] * closure.func.maxstacksize
+    def pre_call(self, closure: LClosure, func_idx: int = 0, nargs: int = 0, nrets: int = 0):
+        closure.stack = [Value.nil()] * closure.func.max_stack_size
         closure.pc = 0
         closure.varargs = []
         for i in range(nargs):
             value = self.stack[func_idx + 1 + i]
-            if i < closure.func.numparams:
+            if i < closure.func.num_params:
                 closure.stack[i] = value
             else:
                 closure.varargs.append(value)
 
-        closure.nrets = nrets
+        closure.num_rets = nrets
         closure.ret_idx = func_idx
         self.push_closure(closure)
 
-    def pycall(self, closure: PClosure, func_idx: int = 0, args_count: int = 0, nrets: int = 0):
+    def py_call(self, closure: PClosure, func_idx: int = 0, args_count: int = 0, nrets: int = 0):
         closure.stack = []
         for i in range(args_count):
             value = self.stack[func_idx + 1 + i]
@@ -239,17 +250,17 @@ class LuaState:
             ret_value = closure.stack[ret_start + i] if i < ret_count else Value.nil()
             self.stack[func_idx + i] = ret_value
 
-    def poscall(self, ret_start, ret_count: int = 0):
+    def poscall(self, ret_start: int, ret_count: int = 0):
         closure = self.pop_closure()
 
         # Handle return values
         if ret_count == -1:
             ret_count = len(closure.stack) - ret_start
 
-        if closure.nrets == -1:
-            closure.nrets = ret_count
+        if closure.num_rets == -1:
+            closure.num_rets = ret_count
 
-        for i in range(closure.nrets):
+        for i in range(closure.num_rets):
             ret_value = closure.stack[ret_start + i] if i < ret_count else Value.nil()
             self.stack[closure.ret_idx + i] = ret_value
 
@@ -258,9 +269,10 @@ class LuaState:
         key = self.stack[-1]
         if not table.is_table():
             raise TypeError("next expects a table")
+        assert type(table.value) is Table
         return table.value.next(key)
 
-    def pushpyfunction(self, func: callable):
+    def pushpyfunction(self, func: PyFunction):
         self.stack.append(Value.closure(PClosure(func)))
 
     def pushvalue(self, val: Value):
@@ -276,7 +288,7 @@ class LuaState:
     def pushnil(self):
         self.stack.append(Value.nil())
 
-    def _luacall(self, func, *args) -> Value:
+    def _lua_call(self, func: LClosure, *args: Value) -> Value:
         nargs = len(args)
         func_idx = len(self.stack)
         self.stack.append(Value.closure(func))
@@ -310,12 +322,14 @@ class LuaState:
             raise IndexError("Invalid stack index")
 
     def jump(self, offset: int):
+        assert len(self.call_info) > 0 and type(self.call_info[-1]) is LClosure
         self.call_info[-1].pc += offset
 
     def fetch(self) -> Optional[Instruction]:
-        if len(self.call_info) == 0:
-            return None
-        return self.call_info[-1].fetch()
+        if self.call_info:
+            assert type(self.call_info[-1]) is LClosure
+            return self.call_info[-1].fetch()
+        return None
 
     # debug
     def print_stack(self):

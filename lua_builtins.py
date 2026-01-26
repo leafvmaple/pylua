@@ -12,7 +12,7 @@ class BUILTIN:
     @staticmethod
     def lua_print(state: LuaState) -> int:
         n = state.gettop()
-        outputs = []
+        outputs: list[str] = []
         for i in range(n):
             outputs.append(str(state.stack[i]))
         print(', '.join(outputs))
@@ -41,7 +41,11 @@ class BUILTIN:
         index.conv_str_to_number()
         if not index.is_number():
             raise TypeError("ipairsaux index must be a number")
+
+        assert type(index.value) is int
         next_index = index.value + 1
+
+        assert type(table.value) is dict
         value = table.value.get(next_index)
         if value is not None:
             state.pushvalue(Value.number(next_index))

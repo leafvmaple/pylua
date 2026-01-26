@@ -36,9 +36,9 @@ class Expr:
         from .lua_ast_util import obj_to_dict
         return obj_to_dict(self)
     
-    @staticmethod
-    def parse(lexer: Lexer) -> Expr:
-        return Expr.parse_subexp(lexer, 0)
+    @classmethod
+    def parse(cls, lexer: Lexer) -> Expr:
+        return Expr.parse_sub_expr(lexer, 0)
 
     @staticmethod
     def parse_list(lexer: Lexer) -> list[Expr]:
@@ -54,33 +54,37 @@ class Expr:
         """Parse a prefix expression (identifier or parenthesized expression)."""
         token = lexer.current()
         if token.type == "IDENTIFIER":
-            exp = NameExp.parse(lexer)
+            exp = NameExpr.parse(lexer)
         elif token.type == "LPAREN":
             lexer.consume("LPAREN")
             exp = Expr.parse(lexer)
             lexer.consume("RPAREN")
+        else:
+            raise SyntaxError(f"Unexpected token in prefix expression: {token.type}")
         
         return Expr.parse_postfix(lexer, exp)
         
     @staticmethod
-    def parse_postfix(lexer: Lexer, exp: Expr) -> Expr:
+    def parse_postfix(lexer: Lexer, expr: Expr) -> Expr:
         """Parse postfix operators (field access, indexing, function calls)."""
         while token := lexer.current():
             if token.type == "LBRACKET":
-                exp = TableAccessExp.parse_bracket(lexer, exp)
+                expr = TableAccessExpr.parse_bracket(lexer, expr)
             elif token.type == "DOT":
-                exp = TableAccessExp.parse_dot(lexer, exp)
+                expr = TableAccessExpr.parse_dot(lexer, expr)
             elif token.type in ("COLON", "LPAREN", "LBRACE", "STRING"):
-                exp = FuncCallExp.parse(lexer, exp)
+                expr = FuncCallExpr.parse_func(lexer, expr)
             else:
-                return exp
+                return expr
+            
+        assert False, "Unreachable code in parse_postfix"
             
     @staticmethod
-    def parse_subexp(lexer: Lexer, limit: int) -> Expr:
+    def parse_sub_expr(lexer: Lexer, limit: int) -> Expr:
         """Parse sub-expression with operator precedence climbing algorithm."""
         # Parse unary operators or simple expression
         if lexer.current().type in ("NOT", "MINUS", "LEN", "BXOR"):
-            exp = UnaryOpExp.parse(lexer)
+            exp = UnaryOpExpr.parse(lexer)
         else:
             exp = Expr._parse_simple_exp(lexer)
 
@@ -89,8 +93,8 @@ class Expr:
             lexer.consume()  # consume operator
             # Right associative operators (POW, CONCAT) use lbp-1
             rbp = lbp - 1 if op in ("POW", "CONCAT") else lbp
-            right = Expr.parse_subexp(lexer, rbp)
-            exp = BinaryOpExp(op, exp, right)
+            right = Expr.parse_sub_expr(lexer, rbp)
+            exp = BinaryOpExpr(op, exp, right)
         return exp
     
     @staticmethod
@@ -99,13 +103,13 @@ class Expr:
         
         # Literal tokens
         if token.type == "NIL":
-            return NilExp.parse(lexer)
+            return NilExpr.parse(lexer)
         elif token.type == "TRUE":
-            return TrueExp.parse(lexer)
+            return TrueExpr.parse(lexer)
         elif token.type == "FALSE":
-            return FalseExp.parse(lexer)
+            return FalseExpr.parse(lexer)
         elif token.type == "VARARG":
-            return VarargExp.parse(lexer)
+            return VarargExpr.parse(lexer)
         
         # Numbers
         elif token.type == "NUMBER":
@@ -114,24 +118,24 @@ class Expr:
         
         # Strings
         elif token.type == "STRING":
-            return StringExp.parse(lexer)
+            return StringExpr.parse(lexer)
         
         # Table constructor
         elif token.type == "LBRACE":
-            return TableConstructorExp.parse(lexer)
+            return TableConstructorExpr.parse(lexer)
         
         # Anonymous Function
         elif token.type == "FUNCTION":
             lexer.consume("FUNCTION")
-            return FuncDefExp.parse(lexer)
+            return FuncDefExpr.parse(lexer)
         
         # Parenthesized expression
         elif token.type == "LPAREN":
-            return ParenExp.parse(lexer)
+            return ParenExpr.parse(lexer)
         
         # Identifier (with potential postfix)
         elif token.type == "IDENTIFIER":
-            return Expr.parse_postfix(lexer, NameExp.parse(lexer))
+            return Expr.parse_postfix(lexer, NameExpr.parse(lexer))
         else:
             raise SyntaxError(f"Unexpected token: {token.type}")
         
@@ -144,15 +148,15 @@ class Expr:
         # Hexadecimal number
         if value_str.startswith(('0x', '0X')):
             if '.' in value_str or 'p' in value_str or 'P' in value_str:
-                return FloatExp.parse_hex(lexer)
+                return FloatExpr.parse_hex(lexer)
             else:
-                return IntegerExp.parse_hex(lexer)
+                return IntegerExpr.parse_hex(lexer)
         # Decimal number
         else:
             if '.' in value_str or 'e' in value_str or 'E' in value_str:
-                return FloatExp.parse(lexer)
+                return FloatExpr.parse(lexer)
             else:
-                return IntegerExp.parse(lexer)
+                return IntegerExpr.parse(lexer)
             
     def codegen(self, info: FuncInfo, reg: int, cnt: int = 1):
         """Generate code for this expression."""
@@ -163,16 +167,16 @@ class Expr:
 # Literal Expressions
 # ============================================================================
 
-class NilExp(Expr):
+class NilExpr(Expr):
     @classmethod
-    def parse(cls, lexer: Lexer) -> NilExp:
+    def parse(cls, lexer: Lexer) -> NilExpr:
         lexer.consume("NIL")
         return cls()
     
     def codegen(self, info: FuncInfo, reg: int, cnt: int = 1):
         CodegenInst.load_nil(info, reg, cnt if cnt else 1)
 
-class TrueExp(Expr):
+class TrueExpr(Expr):
     @classmethod
     def parse(cls, lexer: Lexer):
         lexer.consume("TRUE")
@@ -182,7 +186,7 @@ class TrueExp(Expr):
         CodegenInst.load_bool(info, reg, 1, 0)
 
 
-class FalseExp(Expr):
+class FalseExpr(Expr):
     @classmethod
     def parse(cls, lexer: Lexer):
         lexer.consume("FALSE")
@@ -192,7 +196,7 @@ class FalseExp(Expr):
         CodegenInst.load_bool(info, reg, 0, 0)
 
 
-class VarargExp(Expr):
+class VarargExpr(Expr):
     @classmethod
     def parse(cls, lexer: Lexer):
         lexer.consume("VARARG")
@@ -201,19 +205,19 @@ class VarargExp(Expr):
     def codegen(self, info: FuncInfo, reg: int, cnt: int = 1):
         CodegenInst.vararg(info, reg, cnt)
 
-class IntegerExp(Expr):
+class IntegerExpr(Expr):
     value: int
 
     def __init__(self, value: int):
         self.value = value
 
     @classmethod
-    def parse(cls, lexer: Lexer) -> IntegerExp:
+    def parse(cls, lexer: Lexer) -> IntegerExpr:
         token = lexer.consume("NUMBER")
         return cls(int(token.value))
     
     @classmethod
-    def parse_hex(cls, lexer: Lexer) -> IntegerExp:
+    def parse_hex(cls, lexer: Lexer) -> IntegerExpr:
         token = lexer.consume("NUMBER")
         return cls(int(token.value, 16))
     
@@ -221,20 +225,19 @@ class IntegerExp(Expr):
         CodegenInst.load_k(info, reg, self.value)
 
 
-class FloatExp(Expr):
-    """Floating-point literal expression."""
+class FloatExpr(Expr):
     value: float
 
     def __init__(self, value: float):
         self.value = value
 
     @classmethod
-    def parse(cls, lexer: Lexer) -> FloatExp:
+    def parse(cls, lexer: Lexer) -> FloatExpr:
         token = lexer.consume("NUMBER")
         return cls(float(token.value))
     
     @classmethod
-    def parse_hex(cls, lexer: Lexer) -> FloatExp:
+    def parse_hex(cls, lexer: Lexer) -> FloatExpr:
         token = lexer.consume("NUMBER")
         return cls(float.fromhex(token.value))
     
@@ -242,30 +245,28 @@ class FloatExp(Expr):
         CodegenInst.load_k(info, reg, self.value)
 
 
-class StringExp(Expr):
-    """String literal expression."""
+class StringExpr(Expr):
     value: str
 
     def __init__(self, value: str):
         self.value = value
     
     @classmethod
-    def parse(cls, lexer: Lexer) -> StringExp:
+    def parse(cls, lexer: Lexer) -> StringExpr:
         token = lexer.consume("STRING")
         return cls(token.value)
     
     def codegen(self, info: FuncInfo, reg: int, cnt: int = 1):
         CodegenInst.load_k(info, reg, self.value)
 
-class NameExp(Expr):
-    """Variable name expression (identifier)."""
+class NameExpr(Expr):
     name: str
 
     def __init__(self, name: str):
         self.name = name
 
     @classmethod
-    def parse(cls, lexer: Lexer) -> NameExp:
+    def parse(cls, lexer: Lexer) -> NameExpr:
         token = lexer.consume("IDENTIFIER")
         return cls(token.value)
     
@@ -285,26 +286,26 @@ class NameExp(Expr):
 # Operator Expressions
 # ============================================================================
 
-class UnaryOpExp(Expr):
+class UnaryOpExpr(Expr):
     """Unary operator expression (not, -, #, ~)."""
     op: str
-    exp: Expr
+    expr: Expr
 
-    def __init__(self, op: str, exp: Expr):
+    def __init__(self, op: str, expr: Expr):
         self.op = op
         if self.op == "MINUS":
             self.op = "UNM"
-        self.exp = exp
+        self.expr = expr
 
     @classmethod
-    def parse(cls, lexer: Lexer) -> UnaryOpExp:
+    def parse(cls, lexer: Lexer) -> UnaryOpExpr:
         token = lexer.consume()
-        exp = Expr.parse_subexp(lexer, UNARY_PRECEDENCE)
+        exp = Expr.parse_sub_expr(lexer, UNARY_PRECEDENCE)
         return cls(token.type, exp)
     
-    def codegen(self, info, reg, cnt = 1):
+    def codegen(self, info: FuncInfo, reg: int, cnt: int = 1):
         operand_reg = info.alloc_reg()
-        self.exp.codegen(info, operand_reg)
+        self.expr.codegen(info, operand_reg)
 
         op_func = getattr(CodegenInst, self.op)
         if op_func:
@@ -315,7 +316,7 @@ class UnaryOpExp(Expr):
         info.free_reg()
 
 
-class BinaryOpExp(Expr):
+class BinaryOpExpr(Expr):
     """Binary operator expression."""
     op: str
     left: Expr
@@ -330,7 +331,7 @@ class BinaryOpExp(Expr):
         if self.op == 'CONCAT':
             exprs: list[Expr] = []
             def collect(e: Expr):
-                if type(e) is BinaryOpExp and e.op == 'CONCAT':
+                if type(e) is BinaryOpExpr and e.op == 'CONCAT':
                     collect(e.left)
                     collect(e.right)
                 else:
@@ -385,38 +386,18 @@ class BinaryOpExp(Expr):
             info.free_reg()
 
 
-class ConcatExp(Expr):
-    """String concatenation expression (deprecated, use BinaryOpExp)."""
-    exps: list[Expr]
-
-    def __init__(self, exps: list[Expr]):
-        self.exps = exps
-
-    def codegen(self, info: FuncInfo, reg: int, cnt: int = 1):
-        exp_regs = []
-        for exp in self.exps:
-            exp_reg = info.alloc_reg()
-            exp.codegen(info, exp_reg)
-            exp_regs.append(exp_reg)
-        
-        CodegenInst.concat(info, reg, exp_regs[0], len(exp_regs))
-        
-        for _ in exp_regs:
-            info.free_reg()
-
-
 # ============================================================================
 # Complex Expressions
 # ============================================================================
 
-class ParenExp(Expr):
+class ParenExpr(Expr):
     exp: Expr
 
     def __init__(self, exp: Expr):
         self.exp = exp
 
     @classmethod
-    def parse(cls, lexer: Lexer) -> ParenExp:
+    def parse(cls, lexer: Lexer) -> ParenExpr:
         lexer.consume("LPAREN")
         exp = Expr.parse(lexer)
         lexer.consume("RPAREN")
@@ -426,7 +407,7 @@ class ParenExp(Expr):
         self.exp.codegen(info, reg, cnt)
 
 
-class TableConstructorExp(Expr):
+class TableConstructorExpr(Expr):
     """Table constructor expression {...}."""
     key_exps: list[Expr | None]
     val_exps: list[Expr]
@@ -436,9 +417,9 @@ class TableConstructorExp(Expr):
         self.val_exps = val_exps
 
     @classmethod
-    def parse(cls, lexer: Lexer) -> TableConstructorExp:
-        key_exps = []
-        val_exps = []
+    def parse(cls, lexer: Lexer) -> TableConstructorExpr:
+        key_exps: list[Expr | None] = []
+        val_exps: list[Expr] = []
         lexer.consume("LBRACE")
         while lexer.current().type != "RBRACE":
             cls._parse_field(lexer, key_exps, val_exps)
@@ -464,8 +445,8 @@ class TableConstructorExp(Expr):
             exp = Expr.parse(lexer)
             if lexer.current().type == "ASSIGN":
                 # name = exp
-                if type(exp) is NameExp:
-                    exp = StringExp(exp.name)
+                if type(exp) is NameExpr:
+                    exp = StringExpr(exp.name)
                 lexer.consume("ASSIGN")
                 key_exps.append(exp)
                 val_exps.append(Expr.parse(lexer))
@@ -477,54 +458,54 @@ class TableConstructorExp(Expr):
     def codegen(self, info: FuncInfo, reg: int, cnt: int = 1):
         CodegenInst.new_table(info, reg, 0, 0)
         
-        for key_exp, val_exp in zip(self.key_exps, self.val_exps):
-            if key_exp:
+        for key, val in zip(self.key_exps, self.val_exps):
+            if key:
                 key_reg = info.alloc_reg()
-                key_exp.codegen(info, key_reg)
+                key.codegen(info, key_reg)
             else:
                 key_reg = 0  # Indicate array-style insertion
             
             val_reg = info.alloc_reg()
-            val_exp.codegen(info, val_reg)
+            val.codegen(info, val_reg)
             
             CodegenInst.set_table(info, reg, key_reg, val_reg)
             
-            if key_exp:
+            if key:
                 info.free_reg()
             info.free_reg()
 
 
-class TableAccessExp(Expr):
-    prefix_exp: Expr
-    key_exp: Expr
+class TableAccessExpr(Expr):
+    prefix_expr: Expr
+    key_expr: Expr
 
-    def __init__(self, prefix_exp: Expr, key_exp: Expr):
-        self.prefix_exp = prefix_exp
-        self.key_exp = key_exp
+    def __init__(self, prefix_expr: Expr, key_expr: Expr):
+        self.prefix_expr = prefix_expr
+        self.key_expr = key_expr
         
     @classmethod
-    def parse_bracket(cls, lexer: Lexer, prefix_exp: Expr) -> TableAccessExp:
+    def parse_bracket(cls, lexer: Lexer, prefix_expr: Expr) -> TableAccessExpr:
         lexer.consume("LBRACKET")
         key_exp = Expr.parse(lexer)
         lexer.consume("RBRACKET")
-        return cls(prefix_exp, key_exp)
+        return cls(prefix_expr, key_exp)
     
     @classmethod
-    def parse_dot(cls, lexer: Lexer, prefix_exp: Expr) -> TableAccessExp:
+    def parse_dot(cls, lexer: Lexer, prefix_expr: Expr) -> TableAccessExpr:
         lexer.consume("DOT")
-        return cls(prefix_exp, NameExp.parse(lexer))
+        return cls(prefix_expr, NameExpr.parse(lexer))
     
     @classmethod
-    def parse_colon(cls, lexer: Lexer, prefix_exp: Expr) -> TableAccessExp:
+    def parse_colon(cls, lexer: Lexer, prefix_expr: Expr) -> TableAccessExpr:
         lexer.consume("COLON")
-        return cls(prefix_exp, NameExp.parse(lexer))
+        return cls(prefix_expr, NameExpr.parse(lexer))
     
     def codegen(self, info: FuncInfo, reg: int, cnt: int = 1):
         prefix_reg = info.alloc_reg()
-        self.prefix_exp.codegen(info, prefix_reg)
+        self.prefix_expr.codegen(info, prefix_reg)
         
         key_reg = info.alloc_reg()
-        self.key_exp.codegen(info, key_reg)
+        self.key_expr.codegen(info, key_reg)
         
         CodegenInst.get_table(info, reg, prefix_reg, key_reg)
         
@@ -534,10 +515,10 @@ class TableAccessExp(Expr):
     def codegen_set(self, info: FuncInfo, val_reg: int):
         """Generate code for table assignment: table[key] = value"""
         prefix_reg = info.alloc_reg()
-        self.prefix_exp.codegen(info, prefix_reg)
+        self.prefix_expr.codegen(info, prefix_reg)
         
         key_reg = info.alloc_reg()
-        self.key_exp.codegen(info, key_reg)
+        self.key_expr.codegen(info, key_reg)
         
         CodegenInst.set_table(info, prefix_reg, key_reg, val_reg)
         
@@ -545,27 +526,27 @@ class TableAccessExp(Expr):
         info.free_reg()
 
 
-class FuncCallExp(Expr):
+class FuncCallExpr(Expr):
     """Function call expression."""
-    prefix_exp: Expr
-    name_exp: NameExp | None
+    prefix_expr: Expr
+    name_expr: NameExpr | None
     args: list[Expr]
 
-    def __init__(self, prefix_exp: Expr, name_exp: NameExp | None, args: list[Expr]):
-        self.prefix_exp = prefix_exp
-        self.name_exp = name_exp
+    def __init__(self, prefix_exp: Expr, name_exp: NameExpr | None, args: list[Expr]):
+        self.prefix_expr = prefix_exp
+        self.name_expr = name_exp
         self.args = args
 
     @classmethod
-    def parse(cls, lexer: Lexer, prefix_exp: Expr) -> FuncCallExp:
+    def parse_func(cls, lexer: Lexer, prefix_expr: Expr) -> FuncCallExpr:
         """Parse function call: func(args) or obj:method(args)."""
-        name_exp = None
+        name_expr = None
         if lexer.current().type == "COLON":
             lexer.consume("COLON")
-            name_exp = NameExp.parse(lexer)
+            name_expr = NameExpr.parse(lexer)
         
         args = cls._parse_args(lexer)
-        return cls(prefix_exp, name_exp, args)
+        return cls(prefix_expr, name_expr, args)
     
     @staticmethod
     def _parse_args(lexer: Lexer) -> list[Expr]:
@@ -578,97 +559,86 @@ class FuncCallExp(Expr):
             lexer.consume("RPAREN")
             return args
         elif token.type == "LBRACE":
-            return [TableConstructorExp.parse(lexer)]
+            return [TableConstructorExpr.parse(lexer)]
         elif token.type == "STRING":
-            return [StringExp.parse(lexer)]
+            return [StringExpr.parse(lexer)]
         else:
             return []
         
-    def codegen(self, info: FuncInfo, reg: int = None, cnt: int = 1):
-        # If reg is None, we're being called as a statement
-        if reg is None:
-            reg = info.alloc_reg()
-            should_free = True
-        else:
-            should_free = False
-            
+    def codegen(self, info: FuncInfo, reg: int = -1, cnt: int = 0):
         func_reg = info.alloc_reg()
         
         # Handle method calls (obj:method(args))
-        if self.name_exp:
+        if self.name_expr:
             # Use SELF instruction for method calls
             obj_reg = info.alloc_reg()
-            self.prefix_exp.codegen(info, obj_reg)
+            self.prefix_expr.codegen(info, obj_reg)
             
             key_reg = info.alloc_reg()
-            self.name_exp.codegen(info, key_reg)
+            self.name_expr.codegen(info, key_reg)
             
             CodegenInst.self_(info, func_reg, obj_reg, key_reg)
             info.free_reg()
             info.free_reg()
         else:
-            self.prefix_exp.codegen(info, func_reg)
+            self.prefix_expr.codegen(info, func_reg)
         
         # Generate code for arguments
-        arg_start = info.alloc_regs(len(self.args))
+        arg_reg = info.alloc_regs(len(self.args))
         for i, arg in enumerate(self.args):
-            arg.codegen(info, arg_start + i)
-        
-        # Call instruction: CALL func_reg, nargs+1, nresults+1
-        nargs = len(self.args) + (1 if self.name_exp else 0)  # +1 for self
-        CodegenInst.call(info, func_reg, nargs + 1, cnt + 1)
+            arg.codegen(info, arg_reg + i)
+
+        nargs = len(self.args) + (1 if self.name_expr else 0)  # +1 for self
+        CodegenInst.call(info, func_reg, nargs, cnt)
         
         # Move result to target register
-        if func_reg != reg:
-            CodegenInst.move(info, reg, func_reg)
+        # if func_reg != reg:
+        #     CodegenInst.move(info, reg, func_reg)
         
         # Free registers
-        if len(self.args) > 0:
+        if self.args:
             info.free_regs(len(self.args))
         info.free_reg()
-        
-        if should_free:
-            info.free_reg()
 
 
-class FuncDefExp(Expr):
+class FuncDefExpr(Expr):
     """Function definition expression."""
-    param_names: list[NameExp]
+    param_names: list[NameExpr]
     is_vararg: bool
     body: Block
     ret_exps: list[Expr]
 
-    def __init__(self, param_names: list[NameExp], ret_exps: list[Expr], is_vararg: bool, body: Block):
+    def __init__(self, param_names: list[NameExpr], ret_exps: list[Expr], is_vararg: bool, body: Block):
         self.param_names = param_names
         self.ret_exps = ret_exps
         self.is_vararg = is_vararg
         self.body = body
     
     @classmethod
-    def parse(cls, lexer: Lexer, colon: bool = False) -> FuncDefExp:
+    def parse(cls, lexer: Lexer, colon: bool = False) -> FuncDefExpr:
         from .lua_block import Block
-        from .lua_stat import ReturnStat
+        from .lua_stat import ReturnStmt
 
         lexer.consume("LPAREN")
         
-        param_names = [NameExp("self")] if colon else []
+        param_names = [NameExpr("self")] if colon else []
         
         # Parse parameters
         while lexer.current().type == "IDENTIFIER":
-            param_names.append(NameExp.parse(lexer))
+            param_names.append(NameExpr.parse(lexer))
             if lexer.current().type == "COMMA":
                 lexer.consume("COMMA")
 
         is_vararg = False
         if lexer.current().type == "VARARG":
-            VarargExp.parse(lexer)
+            VarargExpr.parse(lexer)
             is_vararg = True
 
         lexer.consume("RPAREN")
 
         body = Block.parse(lexer)
         if lexer.current().is_return():
-            ret_exps = ReturnStat.parse_list(lexer)
+            ret_exps = ReturnStmt.parse_list(lexer)
         else:
             ret_exps = []
         lexer.consume("END")
@@ -677,7 +647,7 @@ class FuncDefExp(Expr):
     
     def codegen(self, info: FuncInfo, reg: int, cnt: int = 1):
         func_info = FuncInfo(parent=info)
-        func_info.nparams = len(self.param_names)
+        func_info.num_params = len(self.param_names)
         func_info.is_vararg = self.is_vararg
 
         func_info.enter_scope()

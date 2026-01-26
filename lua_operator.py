@@ -1,7 +1,7 @@
 """Lua VM operators implementation."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Callable
 
 from structs.instruction import Instruction
 from lua_value import Value
@@ -19,6 +19,7 @@ class CheckNumber:
             return True
         return False
     
+    @staticmethod
     def checks(va: Value, vb: Value) -> bool:
         return CheckNumber.check(va) and CheckNumber.check(vb)
 
@@ -34,11 +35,11 @@ class CompareCheck:
 
 
 class ArithOperator:
-    op: callable
+    op: Callable
     check: CheckNumber
     meta: str
 
-    def __init__(self, op: callable, check: CheckNumber, meta: str):
+    def __init__(self, op: Callable, check: CheckNumber, meta: str):
         self.op = op
         self.meta = meta
         self.check = check
@@ -47,13 +48,13 @@ class ArithOperator:
         va = L._get_rk(a)
         mt = va.get_metatable()
         if b is None:
-            if self.check.check(va) is not None:
+            if self.check.check(va):
                 return Value.number(self.op(va.value))
             else:
                 if mt:
                     meta_func = mt.get(Value.string(self.meta))
                     if meta_func and meta_func.is_function():
-                        return L._luacall(meta_func.value, va)
+                        return L._lua_call(meta_func.value, va)
         else:
             vb = L._get_rk(b)
             if self.check.checks(va, vb):
@@ -64,7 +65,7 @@ class ArithOperator:
                 if mt:
                     meta_func = mt.get(Value.string(self.meta))
                     if meta_func and meta_func.is_function():
-                        return L._luacall(meta_func.value, va, vb)
+                        return L._lua_call(meta_func.value, va, vb)
         return False
 
     def arith(self, L: LuaState, idx: int, a: int, b: Optional[int] = None):
@@ -113,6 +114,7 @@ class Operator:
         a, b, c = inst.abc()
         state.stack[a] = Value.boolean(bool(b))
         if c != 0:
+            assert type(state.call_info[-1]) is LClosure
             state.call_info[-1].pc += 1
 
     @staticmethod
@@ -309,9 +311,12 @@ class Operator:
         a, sbx = inst.asbx()
         step = state.stack[a + 2]
         idx = state.stack[a]
+        assert type(idx.value) is int
+        assert type(step.value) is int
         idx.value += step.value
         limit = state.stack[a + 1]
-        
+        assert type(limit.value) is int
+
         if (step.value > 0 and idx.value <= limit.value) or \
            (step.value <= 0 and idx.value >= limit.value):
             state.jump(sbx)
@@ -322,6 +327,8 @@ class Operator:
         a, sbx = inst.asbx()
         init = state.stack[a]
         step = state.stack[a + 2]
+        assert type(init.value) is int
+        assert type(step.value) is int
         init.value -= step.value
         state.jump(sbx)
 
@@ -343,6 +350,7 @@ class Operator:
         table = state.stack[a]
         if not table.is_table():
             raise TypeError("SETLIST expects a table")
+        assert type(table.value) is Table
         
         n = b if b != 0 else len(state.stack) - a - 1
         base = (c - 1) * 50

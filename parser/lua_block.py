@@ -1,13 +1,3 @@
-"""Lua AST module (compatibility wrapper).
-
-This module provides backward compatibility by re-exporting all AST classes
-from the new modular structure:
-- lua_exp: Expression nodes
-- lua_stat: Statement nodes and Block
-- lua_ast_util: Utility functions
-
-New code should import from the specific modules directly.
-"""
 from __future__ import annotations
 
 import json
@@ -16,32 +6,31 @@ from typing import Any
 
 from .lua_lexer import Lexer
 from .lua_exp import Expr
-from .lua_stat import Stat, ReturnStat
+from .lua_stat import Stmt, ReturnStmt
 from codegen.func import FuncInfo
 from codegen.inst import CodegenInst
 
 
 class Block:
     last_line: int
-    stats: list[Stat]
+    stmts: list[Stmt]
 
-    def __init__(self, last_line: int, stats: list[Stat]):
+    def __init__(self, last_line: int, stmts: list[Stmt]):
         self.last_line = last_line
-        self.stats = stats
+        self.stmts = stmts
 
     @classmethod
     def parse(cls, lexer: Lexer) -> Block:
         """Parse a block of statements until a block-ending keyword."""
-        stats = []
+        stmts: list[Stmt] = []
 
         while (token := lexer.current()) and not token.is_end() and not token.is_return():
-            stats.append(Stat.parse(lexer))
+            stmts.append(Stmt.parse(lexer))
 
-        last_line = lexer._line if hasattr(lexer, '_line') else 0
-        return cls(last_line, stats)
+        return cls(0, stmts)
 
     def codegen(self, info: FuncInfo):
-        for stmt in self.stats:
+        for stmt in self.stmts:
             stmt.codegen(info)
 
     def to_dict(self) -> dict[str, Any]:
@@ -66,24 +55,25 @@ class Chunk:
 
         token = lexer.current()
         if token.is_return():
-            ret_exps = ReturnStat.parse_list(lexer)
+            ret_exprs = ReturnStmt.parse_list(lexer)
         else:
-            ret_exps = []
+            ret_exprs = []
 
-        return cls(block, ret_exps)
+        return cls(block, ret_exprs)
 
     def to_info(self) -> FuncInfo:
         info = FuncInfo()
         self.block.codegen(info)
 
         if self.ret_exps:
-            nret = len(self.ret_exps)
-            reg = info.alloc_regs(nret)
-            for i in range(nret):
+            num_rets = len(self.ret_exps)
+            reg = info.alloc_regs(num_rets)
+            for i in range(num_rets):
                 self.ret_exps[i].codegen(info, reg + i)
-            CodegenInst.ret(info, reg, nret + 1)
-            info.free_regs(nret)
+            CodegenInst.ret(info, reg, num_rets + 1)
+            info.free_regs(num_rets)
         else:
             CodegenInst.ret(info, 0, 1)
 
         return info
+

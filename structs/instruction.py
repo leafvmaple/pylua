@@ -181,12 +181,15 @@ class Instruction:
 
     def abc(self) -> tuple[int, int, int]:
         """Return A, B, C arguments, with None as default for missing values."""
+        assert type(self._b) is int and type(self._c) is int, "Instruction is not in ABC format"
         return self._a, self._b, self._c
 
     def abx(self) -> tuple[int, int]:
+        assert type(self._bx) is int, "Instruction is not in ABx format"
         return self._a, self._bx
 
     def asbx(self) -> tuple[int, int]:
+        assert type(self._sbx) is int, "Instruction is not in ABx format"
         return self._a, self._sbx
     
     def set_sbx(self, sbx: int) -> None:
@@ -201,20 +204,23 @@ class Instruction:
                 value = 255 - value
             self._args.append(value)
 
-    def update_info(self, pc, constants: list[Value], upvalues: list[str]):
+    def update_info(self, pc: int, constants: list[Value], upvalues: list[str]):
         """Update instruction arguments with constant/upvalue info."""
         self._args.append(self._a)
         
         if self._opcode.mode == iABC:
+            assert type(self._b) is int and type(self._c) is int, "Instruction is not in ABC format"
             self._append_arg(self._opcode.argb, self._b, constants)
             self._append_arg(self._opcode.argc, self._c, constants)
         elif self._opcode.mode == iABx:
+            assert type(self._bx) is int, "Instruction is not in ABx format"
             if self._opcode.name in ["LOADK", "GETGLOBAL", "SETGLOBAL"]:
                 self._comment.append(str(constants[self._bx]))
                 self._args.append(-(self._bx + 1))
             else:
                 self._args.append(self._bx)
         elif self._opcode.mode == iAsBx:
+            assert type(self._sbx) is int, "Instruction is not in ABx format"
             self._args.append(self._sbx)
             self._comment.append(f"to {self._sbx + pc + 2}")
 
@@ -238,7 +244,7 @@ class Instruction:
         parts = [self._opcode.name.ljust(10)]
         if self._args:
             parts.append(' '.join(str(arg) for arg in self._args))
-            if self._comment > 0:
+            if self._comment:
                 parts.append(f"; {' '.join(self._comment)}")
         else:
             parts.append(f"a = {self._a}")

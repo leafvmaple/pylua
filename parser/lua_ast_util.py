@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .lua_exp import Expr
-    from .lua_stat import Stat
+    from .lua_stat import Stmt
     from .lua_block import Block
 
 
@@ -20,10 +20,10 @@ def convert_value(value: Any) -> Any:
     """
     # Import here to avoid circular dependencies
     from .lua_exp import Expr
-    from .lua_stat import Stat
+    from .lua_stat import Stmt
     from .lua_block import Block
     
-    if isinstance(value, (Expr, Stat, Block)):
+    if isinstance(value, (Expr, Stmt, Block)):
         return value.to_dict()
     elif isinstance(value, list):
         return [convert_value(item) for item in value]
@@ -33,7 +33,7 @@ def convert_value(value: Any) -> Any:
         return value
 
 
-def obj_to_dict(obj: Expr | Stat | Block) -> dict[str, Any]:
+def obj_to_dict(obj: Expr | Stmt | Block) -> dict[str, Any]:
     """Convert an AST node to a dictionary using reflection.
     
     This creates a dictionary with:

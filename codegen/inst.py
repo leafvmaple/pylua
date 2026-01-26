@@ -101,16 +101,14 @@ class CodegenInst:
         info.emit_abx(OP['CLOSURE'], a, bx)
 
     @staticmethod
-    def call(info: FuncInfo, a: int, b: int, c: int):
-        info.emit_abc(OP['CALL'], a, b, c)
+    # num_args: number of arguments
+    # num_rets: number of expected return values, -1 for variable
+    def call(info: FuncInfo, a: int, num_args: int, num_rets: int):
+        info.emit_abc(OP['CALL'], a, num_args + 1, num_rets + 1)
 
     @staticmethod
     def get_upval(info: FuncInfo, a: int, b: int):
         info.emit_abc(OP['GETUPVAL'], a, b, 0)
-
-    @staticmethod
-    def set_upvalue(info: FuncInfo, a: int, b: int):
-        info.emit_abc(OP['SETUPVAL'], a, b, 0)
 
     @staticmethod
     def set_upval(info: FuncInfo, a: int, b: int):
@@ -152,7 +150,6 @@ class CodegenInst:
     def tforloop(info: FuncInfo, a: int, c: int):
         info.emit_abc(OP['TFORLOOP'], a, 0, c)
 
-    # Arithmetic operators
     @staticmethod
     def PLUS(info: FuncInfo, a: int, b: int, c: int):
         info.emit_abc(OP['ADD'], a, b, c)

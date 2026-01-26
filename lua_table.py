@@ -90,5 +90,5 @@ class Table:
             self._list.append(self._map[key])
             del self._map[key]
 
-    def gettable(self, key: str) -> Value | None:
-        return self.get(Value(key))
+    def gettable(self, key: Value) -> Value | None:
+        return self.get(key)

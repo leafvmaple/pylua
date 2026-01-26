@@ -31,8 +31,8 @@ def read_instruction(file: Reader) -> Instruction:
 def read_local_var(file: Reader) -> LocalVar:
     locvar = LocalVar()
     locvar.name = file.read_string()
-    locvar.startpc = file.read_uint32()
-    locvar.endpc = file.read_uint32()
+    locvar.start_pc = file.read_uint32()
+    locvar.end_pc = file.read_uint32()
     return locvar
 
 
@@ -43,7 +43,7 @@ def read_debug(file: Reader) -> Debug:
     debug.lineinfos = [file.read_uint32() for _ in range(sizelineinfo)]
     
     sizelocvars = file.read_uint32()
-    debug.locvars = [read_local_var(file) for _ in range(sizelocvars)]
+    debug.loc_vars = [read_local_var(file) for _ in range(sizelocvars)]
     
     sizeupvalues = file.read_uint32()
     debug.upvalues = [file.read_string() for _ in range(sizeupvalues)]
@@ -74,12 +74,12 @@ def read_proto(file: Reader, parent: str | None = None) -> Proto:
     else:
         proto.type = "main"
     
-    proto.linedefined = file.read_uint32()
+    proto.line_defined = file.read_uint32()
     proto.lastlinedefined = file.read_uint32()
-    proto.nups = file.read_uint8()
-    proto.numparams = file.read_uint8()
+    proto.num_upvalues = file.read_uint8()
+    proto.num_params = file.read_uint8()
     proto.is_vararg = file.read_uint8() != 0
-    proto.maxstacksize = file.read_uint8()
+    proto.max_stack_size = file.read_uint8()
 
     # Code
     sizecode = file.read_uint32()

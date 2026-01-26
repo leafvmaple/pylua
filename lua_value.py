@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from enum import Enum
 
+from typing import TypeAlias
 from lua_protocols import LuaCallable
 from lua_table import Table
-from lua_function import LClosure, PClosure
+from lua_function import Closure, LClosure, PClosure
 
+
+ValueType: TypeAlias = str | float | int | bool | Table | Closure | None
 
 class LUA_TYPE(Enum):
     NIL = 0
@@ -20,9 +23,9 @@ class LUA_TYPE(Enum):
 
 
 class Value:
-    value: str | float | int | bool | Table | LClosure | None = None
+    value: ValueType
 
-    def __init__(self, value: str | float | int | bool | Table | LClosure | None = None):
+    def __init__(self, value: ValueType):
         if value is not None:
             self.value = value
         self.conv_float_to_int()
@@ -63,6 +66,7 @@ class Value:
 
     def conv_str_to_number(self):
         if self.is_string():
+            assert type(self.value) is str
             self.value = float(self.value)
             self.conv_float_to_int()
 
@@ -110,6 +114,7 @@ class Value:
         if self.is_nil():
             return False
         if self.is_boolean():
+            assert type(self.value) is bool
             return self.value
         return True
 
@@ -125,24 +130,26 @@ class Value:
         if self.is_number():
             return str(self.value)
         if self.is_string():
+            assert type(self.value) is str
             return self.value
         return None
 
     def get_metatable(self) -> Table | None:
         if self.is_table():
+            assert type(self.value) is Table
             return self.value.getmetatable()
         return None
 
     def gettable(self, key: Value, caller: LuaCallable | None = None) -> Value | None:
-        value = self.value.gettable(key) if self.is_table() else None
-        if value is not None:
-            return value
+        if self.is_table():
+            assert type(self.value) is Table
+            return self.value.gettable(key)
 
         mt = self.get_metatable()
         index = mt.get(Value.string("__index")) if mt else None
         if index:
             if index.is_function():
-                assert caller is not None, "__index metamethod requires a caller"
+                assert caller is not None, "__index meta method requires a caller"
                 return caller(index.value, self, key)
             if index.is_table():
                 return index.gettable(key, caller)
@@ -152,21 +159,25 @@ class Value:
         mt = self.get_metatable()
         length = mt.get(Value.string("__len")) if mt else None
         if length and length.is_function():
-            assert caller is not None, "__len metamethod requires a caller"
+            assert caller is not None, "__len meta method requires a caller"
             result = caller(length.value, self)
             int_result = result.get_integer()
             return int_result if int_result is not None else 0
 
         if self.is_table():
+            assert type(self.value) is Table
             return self.value.len()
         if self.is_string():
+            assert type(self.value) is str
             return len(self.value)
         return 0
 
     def __hash__(self):
         return hash(self.value)
 
-    def __eq__(self, other: Value) -> bool:
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Value):
+            return False
         return self.value == other.value
 
     def __repr__(self) -> str:
