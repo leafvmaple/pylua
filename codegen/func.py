@@ -8,6 +8,7 @@ if TYPE_CHECKING:
 
 Const: TypeAlias = int | float | str | bool
 
+
 class LocalVarInfo:
     name: str
     reg_idx: int
@@ -26,6 +27,7 @@ class LocalVarInfo:
         local_var.end_pc = 0
         return local_var
 
+
 class UpvalueInfo:
     name: str
     loc_idx: int | None
@@ -37,6 +39,7 @@ class UpvalueInfo:
         self.loc_idx = loc_idx
         self.upval_idx = upval_idx
         self.idx = idx
+
 
 class FuncInfo:
     parent: FuncInfo | None
@@ -82,14 +85,14 @@ class FuncInfo:
         for const in self.constants:
             proto.consts.append(Value(const))
         proto.protos = [sub.to_proto() for sub in self.sub_funcs]
-        
+
         # Debug info
         debug = Debug()
         for local_var in self.loc_vars:
             debug.loc_vars.append(local_var.to_local_var())
         # debug.upvalues = list(self.upval_names.values())
         proto.debug = debug
-        
+
         return proto
 
     def idx_of_const(self, const: Const) -> int:
@@ -99,12 +102,12 @@ class FuncInfo:
         else:
             self.constants.append(const)
             return len(self.constants) - 1
-        
+
     def idx_of_upval(self, name: str) -> int | None:
         """Get index of upvalue, adding it if not present."""
         if name in self.upval_names:
             return self.upval_names[name].idx
-        
+
         loc_idx = None
         upval_idx = None
         if self.parent:
@@ -117,15 +120,15 @@ class FuncInfo:
             upval_info = UpvalueInfo(name, loc_idx, upval_idx, len(self.upval_names))
             self.upval_names[name] = upval_info
             return upval_info.idx
-        
+
         return None
-        
+
     def alloc_reg(self) -> int:
         assert self.used_regs < 255, "Exceeded maximum register limit"
         self.used_regs += 1
         self.max_regs = max(self.max_regs, self.used_regs)
         return self.used_regs - 1
-    
+
     def free_reg(self) -> None:
         assert self.used_regs > 0, "No registers to free"
         self.used_regs -= 1
@@ -134,7 +137,7 @@ class FuncInfo:
         for _ in range(n):
             self.alloc_reg()
         return self.used_regs - n
-    
+
     def free_regs(self, n: int) -> None:
         for _ in range(n):
             self.free_reg()
@@ -155,7 +158,7 @@ class FuncInfo:
         self.loc_vars.append(local_var)
         self.loc_names[name] = local_var
         return local_var
-    
+
     def remove_local_var(self, name: str) -> None:
         """Remove a local variable from the current scope."""
         local_var = self.loc_names.get(name)
@@ -167,7 +170,7 @@ class FuncInfo:
     def get_local_var(self, name: str) -> LocalVarInfo | None:
         """Get local variable info by name."""
         return self.loc_names.get(name)
-    
+
     def get_upval_info(self, name: str) -> UpvalueInfo | None:
         """Get upvalue info by name."""
         return self.upval_names.get(name)
@@ -196,17 +199,19 @@ class FuncInfo:
     def current_pc(self) -> int:
         """Get the current program counter (instruction index)."""
         return len(self.insts)
-    
+
     def __str__(self) -> str:
         """Generate a human-readable representation of the function info."""
         lines: list[str] = []
         lines.append(f"Function ({len(self.insts)} instructions)")
-        lines.append(f"{self.num_params} params, {self.max_regs} slots, {len(self.upval_names)} upvalues, {len(self.loc_vars)} locals, {len(self.constants)} constants, {len(self.sub_funcs)} functions")
-        
+        lines.append(f"{self.num_params} params, {self.max_regs} slots, "
+                     f"{len(self.upval_names)} upvalues, {len(self.loc_vars)} locals, "
+                     f"{len(self.constants)} constants, {len(self.sub_funcs)} functions")
+
         # Instructions
         for i, inst in enumerate(self.insts, 1):
             lines.append(f'\t{i}\t{inst}')
-        
+
         # Constants
         if self.constants:
             lines.append(f"constants ({len(self.constants)}):")
@@ -215,24 +220,23 @@ class FuncInfo:
                     lines.append(f'\t{i}\t"{const}"')
                 else:
                     lines.append(f'\t{i}\t{const}')
-        
+
         # Locals
         if self.loc_vars:
             lines.append(f"locals ({len(self.loc_vars)}):")
             for i, var in enumerate(self.loc_vars):
                 lines.append(f'\t{i}\t{var.name}\treg={var.reg_idx}\tscope={var.scope_depth}')
-        
+
         # Up values
         if self.upval_names:
             lines.append(f"upvalues ({len(self.upval_names)}):")
             for name, info in self.upval_names.items():
                 lines.append(f'\t{info.idx}\t{name}')
-        
+
         # Sub-functions
         if self.sub_funcs:
             lines.append(f"\n--- Sub-functions ({len(self.sub_funcs)}) ---")
             for i, sub in enumerate(self.sub_funcs):
                 lines.append(f"\n[{i}] {sub}")
-        
+
         return '\n'.join(lines)
-    

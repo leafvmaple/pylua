@@ -38,16 +38,16 @@ def read_local_var(file: Reader) -> LocalVar:
 
 def read_debug(file: Reader) -> Debug:
     debug = Debug()
-    
+
     sizelineinfo = file.read_uint32()
     debug.lineinfos = [file.read_uint32() for _ in range(sizelineinfo)]
-    
+
     sizelocvars = file.read_uint32()
     debug.loc_vars = [read_local_var(file) for _ in range(sizelocvars)]
-    
+
     sizeupvalues = file.read_uint32()
     debug.upvalues = [file.read_string() for _ in range(sizeupvalues)]
-    
+
     return debug
 
 
@@ -73,7 +73,7 @@ def read_proto(file: Reader, parent: str | None = None) -> Proto:
         proto.type = "function"
     else:
         proto.type = "main"
-    
+
     proto.line_defined = file.read_uint32()
     proto.lastlinedefined = file.read_uint32()
     proto.num_upvalues = file.read_uint8()
@@ -88,7 +88,7 @@ def read_proto(file: Reader, parent: str | None = None) -> Proto:
     # Constants
     sizek = file.read_uint32()
     proto.consts = [read_value(file) for _ in range(sizek)]
-    
+
     # Sub-protos
     sizep = file.read_uint32()
     proto.protos = [read_proto(file, proto.source) for _ in range(sizep)]

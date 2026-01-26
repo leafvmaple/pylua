@@ -11,6 +11,7 @@ from lua_function import LClosure
 if TYPE_CHECKING:
     from lua_state import LuaState
 
+
 class CheckNumber:
     @staticmethod
     def check(val: Value) -> bool:
@@ -18,7 +19,7 @@ class CheckNumber:
         if val.is_number():
             return True
         return False
-    
+
     @staticmethod
     def checks(va: Value, vb: Value) -> bool:
         return CheckNumber.check(va) and CheckNumber.check(vb)
@@ -83,18 +84,18 @@ class ArithOperator:
 
 
 ARITH = {
-    "ADD": ArithOperator(lambda a, b: a + b , CheckNumber, "__add"),
-    "SUB": ArithOperator(lambda a, b: a - b , CheckNumber, "__sub"),
-    "MUL": ArithOperator(lambda a, b: a * b , CheckNumber, "__mul"),
-    "DIV": ArithOperator(lambda a, b: a / b , CheckNumber, "__div"),
-    "MOD": ArithOperator(lambda a, b: a % b , CheckNumber, "__mod"),
+    "ADD": ArithOperator(lambda a, b: a + b, CheckNumber, "__add"),
+    "SUB": ArithOperator(lambda a, b: a - b, CheckNumber, "__sub"),
+    "MUL": ArithOperator(lambda a, b: a * b, CheckNumber, "__mul"),
+    "DIV": ArithOperator(lambda a, b: a / b, CheckNumber, "__div"),
+    "MOD": ArithOperator(lambda a, b: a % b, CheckNumber, "__mod"),
     "POW": ArithOperator(lambda a, b: a ** b, CheckNumber, "__pow"),
-    "UNM": ArithOperator(lambda a: -a       , CheckNumber, "__unm"),
-    "BNOT": ArithOperator(lambda a: ~a      , CheckNumber, "__bnot"),
+    "UNM": ArithOperator(lambda a: -a, CheckNumber, "__unm"),
+    "BNOT": ArithOperator(lambda a: ~a, CheckNumber, "__bnot"),
 
-    "EQ": ArithOperator(lambda a, b: a == b , CompareCheck, "__eq"),
-    "LT": ArithOperator(lambda a, b: a < b  , CompareCheck, "__lt"),
-    "LE": ArithOperator(lambda a, b: a <= b , CompareCheck, "__le"),
+    "EQ": ArithOperator(lambda a, b: a == b, CompareCheck, "__eq"),
+    "LT": ArithOperator(lambda a, b: a < b, CompareCheck, "__lt"),
+    "LE": ArithOperator(lambda a, b: a <= b, CompareCheck, "__le"),
 }
 
 
@@ -249,7 +250,8 @@ class Operator:
     def EQ(inst: Instruction, state: LuaState):
         a, b, c = inst.abc()
         if ARITH["EQ"].compare(state, b, c) == (a != 0):
-            inst = state.fetch(); assert inst.op_name() == "JMP"
+            inst = state.fetch()
+            assert inst.op_name() == "JMP"
             Operator.JMP(inst, state)
         else:
             state.call_info[-1].pc += 1
@@ -258,7 +260,8 @@ class Operator:
     def LT(inst: Instruction, state: LuaState):
         a, b, c = inst.abc()
         if ARITH["LT"].compare(state, b, c) == (a != 0):
-            inst = state.fetch(); assert inst.op_name() == "JMP"
+            inst = state.fetch()
+            assert inst.op_name() == "JMP"
             Operator.JMP(inst, state)
         else:
             state.call_info[-1].pc += 1
@@ -267,7 +270,8 @@ class Operator:
     def LE(inst: Instruction, state: LuaState):
         a, b, c = inst.abc()
         if ARITH["LE"].compare(state, b, c) == (a != 0):
-            inst = state.fetch(); assert inst.op_name() == "JMP"
+            inst = state.fetch()
+            assert inst.op_name() == "JMP"
             Operator.JMP(inst, state)
         else:
             state.call_info[-1].pc += 1
@@ -351,10 +355,10 @@ class Operator:
         if not table.is_table():
             raise TypeError("SETLIST expects a table")
         assert type(table.value) is Table
-        
+
         n = b if b != 0 else len(state.stack) - a - 1
         base = (c - 1) * 50
-        
+
         for i in range(1, n + 1):
             table.value.set(base + i, state.stack[a + i])
 

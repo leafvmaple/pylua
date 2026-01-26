@@ -38,7 +38,7 @@ class LuaState:
         self.globals = Table()
         self.registry.set(key, Value.table(self.globals))
         self.mt = Table()
-        self.call_info = [call_info] # Pass Value as factory
+        self.call_info = [call_info]  # Pass Value as factory
         self.func = call_info.func
         self.stack = call_info.stack
 
@@ -212,9 +212,12 @@ class LuaState:
         op_name = inst.op_name()
         method = getattr(Operator, op_name, None)
         if method:
-            # print(f"-{len(self.call_info)}- " +  str(inst).ljust(40))
+            # print(f"-{len(self.call_info)}- " + str(inst).ljust(40))
             method(inst, self)
-            # print(f"-{len(self.call_info)}- " +  ''.join(f"[{v}]" for v in self.stack))
+            # print(
+            #     f"-{len(self.call_info)}- "
+            #     + ''.join(f"[{v}]" for v in self.stack)
+            # )
         if op_name == "RETURN":
             return False
         return True
@@ -300,7 +303,7 @@ class LuaState:
         return res
 
     def _get_rk(self, rk: int) -> Value:
-        """Get RK value: if rk >= 256, it's a constant index; otherwise it's a register"""
+        """Get RK value: constant index or register."""
         if rk >= 256:
             # It's a constant (k)
             return self.func.consts[rk - 256]

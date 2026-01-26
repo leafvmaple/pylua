@@ -10,6 +10,7 @@ from lua_function import Closure, LClosure, PClosure
 
 ValueType: TypeAlias = str | float | int | bool | Table | Closure | None
 
+
 class LUA_TYPE(Enum):
     NIL = 0
     BOOLEAN = 1

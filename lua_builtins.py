@@ -8,6 +8,7 @@ if TYPE_CHECKING:
 
 from lua_value import Value
 
+
 class BUILTIN:
     @staticmethod
     def lua_print(state: LuaState) -> int:
@@ -17,13 +18,13 @@ class BUILTIN:
             outputs.append(str(state.stack[i]))
         print(', '.join(outputs))
         return 0
-    
+
     @staticmethod
     def lua_getmetatable(state: LuaState) -> int:
         if state.getmetatable(1) != 1:
             state.pushnil()
         return 1
-    
+
     @staticmethod
     def lua_setmetatable(state: LuaState) -> int:
         if (state.getmetafield(1, "__metatable") != 0):
@@ -31,7 +32,7 @@ class BUILTIN:
         state.settop(2)
         state.setmetatable(1)
         return 0
-    
+
     @staticmethod
     def lua_ipairsaux(state: LuaState) -> int:
         table = state.stack[0]
@@ -53,7 +54,7 @@ class BUILTIN:
             return 2
         else:
             return 0
-    
+
     @staticmethod
     def lua_next(state: LuaState) -> int:
         result = state.next(0)
@@ -63,7 +64,7 @@ class BUILTIN:
             return 2
         else:
             return 0
-        
+
     @staticmethod
     def lua_ipairs(state: LuaState) -> int:
         table = state.stack[0]
@@ -73,7 +74,7 @@ class BUILTIN:
         state.pushvalue(table)
         state.pushvalue(Value.number(0))
         return 3
-    
+
     @staticmethod
     def lua_pairs(state: LuaState) -> int:
         table = state.stack[0]
@@ -83,12 +84,12 @@ class BUILTIN:
         state.pushvalue(table)
         state.pushnil()
         return 3
-    
+
     @staticmethod
     def lua_error(state: LuaState) -> int:
         state.error()
         return 0
-    
+
     @staticmethod
     def lua_pcall(state: LuaState) -> int:
         nargs = state.gettop() - 1

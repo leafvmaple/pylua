@@ -73,7 +73,7 @@ OPCODES = [
 ]
 
 
-def a_to_bitset(a: int) ->  int:
+def a_to_bitset(a: int) -> int:
     return (a & 0xFF) << 6
 
 
@@ -167,11 +167,11 @@ class Instruction:
     @classmethod
     def from_abc(cls, opcode_idx: int, a: int, b: int, c: int) -> Instruction:
         return cls(code_idx=opcode_idx, a=a, b=b, c=c)
-    
+
     @classmethod
     def from_abx(cls, opcode_idx: int, a: int, bx: int) -> Instruction:
         return cls(code_idx=opcode_idx, a=a, bx=bx)
-    
+
     @classmethod
     def from_asbx(cls, opcode_idx: int, a: int, sbx: int) -> Instruction:
         return cls(code_idx=opcode_idx, a=a, sbx=sbx)
@@ -191,7 +191,7 @@ class Instruction:
     def asbx(self) -> tuple[int, int]:
         assert type(self._sbx) is int, "Instruction is not in ABx format"
         return self._a, self._sbx
-    
+
     def set_sbx(self, sbx: int) -> None:
         assert self._opcode.mode == iAsBx, "Instruction is not in ABx format"
         self._sbx = sbx
@@ -207,7 +207,7 @@ class Instruction:
     def update_info(self, pc: int, constants: list[Value], upvalues: list[str]):
         """Update instruction arguments with constant/upvalue info."""
         self._args.append(self._a)
-        
+
         if self._opcode.mode == iABC:
             assert type(self._b) is int and type(self._c) is int, "Instruction is not in ABC format"
             self._append_arg(self._opcode.argb, self._b, constants)
@@ -257,6 +257,6 @@ class Instruction:
                 parts.append(f"sbx = {self._sbx}")
 
         return '\t'.join(parts)
-    
+
     def __repr__(self):
         return f"<Instruction {self._opcode.name} 0x{self.to_bitset():08X}>"

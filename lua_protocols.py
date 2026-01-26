@@ -6,6 +6,7 @@ that allow different modules to depend on interfaces rather than concrete implem
 from __future__ import annotations
 
 from typing import Protocol, TYPE_CHECKING
+
 if TYPE_CHECKING:
     from lua_value import Value
 

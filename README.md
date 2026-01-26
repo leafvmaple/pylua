@@ -20,7 +20,7 @@
 ├─ parser/            # 词法/语法分析
 │  ├─ lua_ast_util.py
 │  ├─ lua_block.py
-│  ├─ lua_exp.py
+│  ├─ lua_expr.py
 │  ├─ lua_lexer.py
 │  └─ lua_stat.py
 ├─ structs/           # 数据结构

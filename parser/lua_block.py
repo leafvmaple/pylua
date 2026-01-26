@@ -5,7 +5,7 @@ import json
 from typing import Any
 
 from .lua_lexer import Lexer
-from .lua_exp import Expr
+from .lua_expr import Expr
 from .lua_stat import Stmt, ReturnStmt
 from codegen.func import FuncInfo
 from codegen.inst import CodegenInst
@@ -76,4 +76,3 @@ class Chunk:
             CodegenInst.ret(info, 0, 1)
 
         return info
-

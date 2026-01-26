@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from .func import Const, FuncInfo
 
-OP= {
+OP = {
     'MOVE': 0,
     'LOADK': 1,
     'LOADBOOL': 2,
@@ -43,6 +43,7 @@ OP= {
     'VARARG': 38,
 }
 
+
 class CodegenInst:
     @staticmethod
     def move(info: FuncInfo, a: int, b: int):
@@ -67,7 +68,7 @@ class CodegenInst:
     @staticmethod
     def get_global(info: FuncInfo, a: int, bx: int):
         info.emit_abx(OP['GETGLOBAL'], a, bx)
-    
+
     @staticmethod
     def set_global(info: FuncInfo, a: int, bx: int):
         info.emit_abx(OP['SETGLOBAL'], a, bx)
@@ -133,7 +134,7 @@ class CodegenInst:
     @staticmethod
     def testset(info: FuncInfo, a: int, b: int, c: int):
         info.emit_abc(OP['TESTSET'], a, b, c)
-    
+
     @staticmethod
     def test_set(info: FuncInfo, a: int, b: int, c: int):
         info.emit_abc(OP['TESTSET'], a, b, c)
@@ -198,17 +199,17 @@ class CodegenInst:
     @staticmethod
     def LE(info: FuncInfo, a: int, b: int, c: int):
         info.emit_abc(OP['LE'], a, b, c)
-    
+
     @staticmethod
     def GT(info: FuncInfo, a: int, b: int, c: int):
         # GT is implemented as NOT (LE)
         info.emit_abc(OP['LE'], 0, c, b)
-    
+
     @staticmethod
     def GE(info: FuncInfo, a: int, b: int, c: int):
         # GE is implemented as NOT (LT)
         info.emit_abc(OP['LT'], 0, c, b)
-    
+
     @staticmethod
     def NE(info: FuncInfo, a: int, b: int, c: int):
         # NE is implemented as NOT (EQ)

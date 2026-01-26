@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from lua_value import Value
@@ -45,7 +45,7 @@ class Table:
 
     def len(self) -> int:
         return len(self._list)
-    
+
     def next(self, key: Value) -> tuple[Value, Value] | None:
         if key.is_nil():
             if len(self._list) > 0:
@@ -53,17 +53,17 @@ class Table:
             for k in self._map:
                 return k, self._map[k]
             return None
-        
+
         int_key = key.get_integer()
         if int_key is not None:
             return self._list_next(int_key) or self._map_next(int_key)
         return self._map_next(key)
-    
+
     def _list_next(self, key: int) -> tuple[Value, Value] | None:
         if key < len(self._list):
             return Value(key + 1), self._list[key]
         return None
-    
+
     def _map_next(self, key: Value | int) -> tuple[Value, Value] | None:
         found = False
         for k in self._map:
@@ -72,7 +72,7 @@ class Table:
             if k == key:
                 found = True
         return None
-    
+
     def setmetatable(self, metatable: Table):
         self._metatable = metatable
 

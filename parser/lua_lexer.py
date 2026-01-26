@@ -80,8 +80,9 @@ class Lexer:
     def _scan_token(self) -> Token:
         """Scan and return the next token from the input stream.
 
-        This is the main lexical analysis function that implements a finite automaton
-        to recognize Lua tokens. It uses a dispatch pattern for efficiency.
+        This is the main lexical analysis function that implements a finite
+        automaton to recognize Lua tokens. It uses a dispatch pattern for
+        efficiency.
         """
         self.skip_whitespace()
         if self.is_eof():

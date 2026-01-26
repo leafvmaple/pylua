@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 
 PyFunction: TypeAlias = Callable[[LuaState], int]
 
+
 class LocalVar:
     name: str
     start_pc: int
@@ -87,7 +88,8 @@ class LClosure(Closure):
     def __init__(self, func: Proto):
         from lua_value import Value
         self.stack = [Value.nil()] * func.max_stack_size
-        self.upvalues = [Value.nil()] * func.num_upvalues  # Initialize upvalues based on function prototype
+        self.upvalues = [Value.nil()] * func.num_upvalues
+        # Initialize upvalues based on function prototype
         self.varargs = []
         self.func = func
         self.num_rets = 0
