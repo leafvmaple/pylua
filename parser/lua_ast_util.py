@@ -26,9 +26,9 @@ def convert_value(value: Any) -> Any:
     if isinstance(value, (Expr, Stmt, Block)):
         return value.to_dict()
     elif isinstance(value, list):
-        return [convert_value(item) for item in value]
+        return [convert_value(item) for item in value]  # type: ignore[misc]
     elif isinstance(value, tuple):
-        return tuple(convert_value(item) for item in value)
+        return tuple(convert_value(item) for item in value)  # type: ignore[misc]
     else:
         return value
 

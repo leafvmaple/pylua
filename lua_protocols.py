@@ -9,8 +9,19 @@ from typing import Protocol, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from lua_value import Value
+    from lua_function import LClosure
 
 
 class LuaCallable(Protocol):
-    def __call__(self, func, *args: Value) -> Value:
+    def __call__(self, func: LClosure, *args: Value) -> Value:
+        ...
+
+
+class LuaCheckable(Protocol):
+    @staticmethod
+    def check(val: Value) -> bool:
+        ...
+
+    @staticmethod
+    def checks(va: Value, vb: Value) -> bool:
         ...

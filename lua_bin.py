@@ -29,24 +29,24 @@ def read_instruction(file: Reader) -> Instruction:
 
 
 def read_local_var(file: Reader) -> LocalVar:
-    locvar = LocalVar()
-    locvar.name = file.read_string()
-    locvar.start_pc = file.read_uint32()
-    locvar.end_pc = file.read_uint32()
-    return locvar
+    loc_var = LocalVar()
+    loc_var.name = file.read_string()
+    loc_var.start_pc = file.read_uint32()
+    loc_var.end_pc = file.read_uint32()
+    return loc_var
 
 
 def read_debug(file: Reader) -> Debug:
     debug = Debug()
 
-    sizelineinfo = file.read_uint32()
-    debug.lineinfos = [file.read_uint32() for _ in range(sizelineinfo)]
+    size_line_infos = file.read_uint32()
+    debug.line_infos = [file.read_uint32() for _ in range(size_line_infos)]
 
-    sizelocvars = file.read_uint32()
-    debug.loc_vars = [read_local_var(file) for _ in range(sizelocvars)]
+    size_loc_vars = file.read_uint32()
+    debug.loc_vars = [read_local_var(file) for _ in range(size_loc_vars)]
 
-    sizeupvalues = file.read_uint32()
-    debug.upvalues = [file.read_string() for _ in range(sizeupvalues)]
+    size_upvalues = file.read_uint32()
+    debug.upvalues = [file.read_string() for _ in range(size_upvalues)]
 
     return debug
 
@@ -75,23 +75,23 @@ def read_proto(file: Reader, parent: str | None = None) -> Proto:
         proto.type = "main"
 
     proto.line_defined = file.read_uint32()
-    proto.lastlinedefined = file.read_uint32()
+    proto.last_line_defined = file.read_uint32()
     proto.num_upvalues = file.read_uint8()
     proto.num_params = file.read_uint8()
     proto.is_vararg = file.read_uint8() != 0
     proto.max_stack_size = file.read_uint8()
 
     # Code
-    sizecode = file.read_uint32()
-    proto.codes = [read_instruction(file) for _ in range(sizecode)]
+    size_codes = file.read_uint32()
+    proto.codes = [read_instruction(file) for _ in range(size_codes)]
 
     # Constants
-    sizek = file.read_uint32()
-    proto.consts = [read_value(file) for _ in range(sizek)]
+    size_k = file.read_uint32()
+    proto.consts = [read_value(file) for _ in range(size_k)]
 
     # Sub-protos
-    sizep = file.read_uint32()
-    proto.protos = [read_proto(file, proto.source) for _ in range(sizep)]
+    size_p = file.read_uint32()
+    proto.protos = [read_proto(file, proto.source) for _ in range(size_p)]
 
     # Debug info
     proto.debug = read_debug(file)

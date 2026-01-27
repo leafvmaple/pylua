@@ -14,10 +14,12 @@ from codegen.inst import CodegenInst
 class Block:
     last_line: int
     stmts: list[Stmt]
+    ret_exprs: list[Expr]
 
-    def __init__(self, last_line: int, stmts: list[Stmt]):
+    def __init__(self, last_line: int, stmts: list[Stmt], ret_exps: list[Expr]):
         self.last_line = last_line
         self.stmts = stmts
+        self.ret_exprs = ret_exps
 
     @classmethod
     def parse(cls, lexer: Lexer) -> Block:
@@ -27,7 +29,10 @@ class Block:
         while (token := lexer.current()) and not token.is_end() and not token.is_return():
             stmts.append(Stmt.parse(lexer))
 
-        return cls(0, stmts)
+        token = lexer.current()
+        ret_exprs = ReturnStmt.parse_list(lexer) if token.is_return() else []
+
+        return cls(0, stmts, ret_exprs)
 
     def codegen(self, info: FuncInfo):
         for stmt in self.stmts:
@@ -43,33 +48,25 @@ class Block:
 
 class Chunk:
     block: Block
-    ret_exps: list[Expr]
 
-    def __init__(self, block: Block, ret_exps: list[Expr]):
+    def __init__(self, block: Block):
         self.block = block
-        self.ret_exps = ret_exps
 
     @classmethod
     def parse(cls, lexer: Lexer) -> Chunk:
         block = Block.parse(lexer)
 
-        token = lexer.current()
-        if token.is_return():
-            ret_exprs = ReturnStmt.parse_list(lexer)
-        else:
-            ret_exprs = []
-
-        return cls(block, ret_exprs)
+        return cls(block)
 
     def to_info(self) -> FuncInfo:
         info = FuncInfo()
         self.block.codegen(info)
 
-        if self.ret_exps:
-            num_rets = len(self.ret_exps)
+        if self.block.ret_exprs:
+            num_rets = len(self.block.ret_exprs)
             reg = info.alloc_regs(num_rets)
             for i in range(num_rets):
-                self.ret_exps[i].codegen(info, reg + i)
+                self.block.ret_exprs[i].codegen(info, reg + i)
             CodegenInst.ret(info, reg, num_rets + 1)
             info.free_regs(num_rets)
         else:

@@ -1,76 +1,9 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from codegen.inst import OpCode, OPCODES, iABC, iABx, iAsBx, OpArgN, OpArgK
 
 if TYPE_CHECKING:
     from lua_value import Value
-
-
-# Instruction argument modes
-OpArgN = 0  # argument is not used
-OpArgU = 1  # argument is used
-OpArgR = 2  # argument is a register or a jump offset
-OpArgK = 3  # argument is a constant or register/constant
-
-# Instruction formats: iABC, iABx, iAsBx
-iABC, iABx, iAsBx = 0, 1, 2
-
-
-class OpCode:
-    """Lua 5.1 opcode definition with mode information."""
-    def __init__(self, name: str, testflag: int, setareg: int, argb: int, argc: int, mode: int):
-        self.name = name
-        self.testflag = testflag  # operator is a test (next instruction must be a jump)
-        self.setareg = setareg    # instruction set register A
-        self.argb = argb          # B arg mode
-        self.argc = argc          # C arg mode
-        self.mode = mode          # op mode (iABC=0, iABx=1, iAsBx=2)
-
-    def __repr__(self):
-        return self.name
-
-
-# Lua 5.1 opcodes with their properties
-# OpCode(name, testflag, setareg, argb, argc, mode)
-OPCODES = [
-    OpCode("MOVE",      0, 1, OpArgR, OpArgN, iABC),
-    OpCode("LOADK",     0, 1, OpArgK, OpArgN, iABx),
-    OpCode("LOADBOOL",  0, 1, OpArgU, OpArgU, iABC),
-    OpCode("LOADNIL",   0, 1, OpArgU, OpArgN, iABC),
-    OpCode("GETUPVAL",  0, 1, OpArgU, OpArgN, iABC),
-    OpCode("GETGLOBAL", 0, 1, OpArgK, OpArgN, iABx),
-    OpCode("GETTABLE",  0, 1, OpArgR, OpArgK, iABC),
-    OpCode("SETGLOBAL", 0, 0, OpArgK, OpArgN, iABx),
-    OpCode("SETUPVAL",  0, 0, OpArgU, OpArgN, iABC),
-    OpCode("SETTABLE",  0, 0, OpArgK, OpArgK, iABC),
-    OpCode("NEWTABLE",  0, 1, OpArgU, OpArgU, iABC),
-    OpCode("SELF",      0, 1, OpArgR, OpArgK, iABC),
-    OpCode("ADD",       0, 1, OpArgK, OpArgK, iABC),
-    OpCode("SUB",       0, 1, OpArgK, OpArgK, iABC),
-    OpCode("MUL",       0, 1, OpArgK, OpArgK, iABC),
-    OpCode("DIV",       0, 1, OpArgK, OpArgK, iABC),
-    OpCode("MOD",       0, 1, OpArgK, OpArgK, iABC),
-    OpCode("POW",       0, 1, OpArgK, OpArgK, iABC),
-    OpCode("UNM",       0, 1, OpArgR, OpArgN, iABC),
-    OpCode("NOT",       0, 1, OpArgR, OpArgN, iABC),
-    OpCode("LEN",       0, 1, OpArgR, OpArgN, iABC),
-    OpCode("CONCAT",    0, 1, OpArgR, OpArgR, iABC),
-    OpCode("JMP",       0, 0, OpArgR, OpArgN, iAsBx),
-    OpCode("EQ",        1, 0, OpArgK, OpArgK, iABC),
-    OpCode("LT",        1, 0, OpArgK, OpArgK, iABC),
-    OpCode("LE",        1, 0, OpArgK, OpArgK, iABC),
-    OpCode("TEST",      1, 0, OpArgN, OpArgU, iABC),
-    OpCode("TESTSET",   1, 1, OpArgR, OpArgU, iABC),
-    OpCode("CALL",      0, 1, OpArgU, OpArgU, iABC),
-    OpCode("TAILCALL",  0, 1, OpArgU, OpArgU, iABC),
-    OpCode("RETURN",    0, 0, OpArgU, OpArgN, iABC),
-    OpCode("FORLOOP",   0, 1, OpArgR, OpArgN, iAsBx),
-    OpCode("FORPREP",   0, 1, OpArgR, OpArgN, iAsBx),
-    OpCode("TFORLOOP",  0, 0, OpArgN, OpArgU, iABC),
-    OpCode("SETLIST",   0, 0, OpArgU, OpArgU, iABC),
-    OpCode("CLOSE",     0, 0, OpArgN, OpArgN, iABC),
-    OpCode("CLOSURE",   0, 1, OpArgU, OpArgN, iABx),
-    OpCode("VARARG",    0, 1, OpArgU, OpArgN, iABC),
-]
 
 
 def a_to_bitset(a: int) -> int:
@@ -94,7 +27,7 @@ def sbx_to_bitset(sbx: int) -> int:
     return ((sbx + bias) & 0x3FFFF) << 14
 
 
-def bistet_to_abc(instruction: int) -> tuple[int, int, int]:
+def bitset_to_abc(instruction: int) -> tuple[int, int, int]:
     """Decode instruction into A, B, C arguments."""
     a = (instruction >> 6) & 0xFF
     c = (instruction >> 14) & 0x1FF
@@ -102,14 +35,14 @@ def bistet_to_abc(instruction: int) -> tuple[int, int, int]:
     return a, b, c
 
 
-def bistet_to_abx(instruction: int) -> tuple[int, int]:
+def bitset_to_abx(instruction: int) -> tuple[int, int]:
     """Decode instruction into A, Bx arguments."""
     a = (instruction >> 6) & 0xFF
     bx = (instruction >> 14) & 0x3FFFF
     return a, bx
 
 
-def bistet_to_asbx(instruction: int) -> tuple[int, int]:
+def bitset_to_asbx(instruction: int) -> tuple[int, int]:
     """Decode instruction into A, sBx arguments."""
     a = (instruction >> 6) & 0xFF
     bx = (instruction >> 14) & 0x3FFFF
@@ -142,11 +75,11 @@ class Instruction:
             self._opcode_idx = instruction & 0x3F
             self._opcode = OPCODES[self._opcode_idx]
             if self._opcode.mode == iABC:
-                self._a, self._b, self._c = bistet_to_abc(instruction)
+                self._a, self._b, self._c = bitset_to_abc(instruction)
             elif self._opcode.mode == iABx:
-                self._a, self._bx = bistet_to_abx(instruction)
+                self._a, self._bx = bitset_to_abx(instruction)
             elif self._opcode.mode == iAsBx:
-                self._a, self._sbx = bistet_to_asbx(instruction)
+                self._a, self._sbx = bitset_to_asbx(instruction)
         else:
             assert code_idx is not None and a is not None, "Must provide code_idx and a when instruction is None"
             self._opcode = OPCODES[self._opcode_idx]

@@ -16,7 +16,7 @@ class Table:
         self._map = {}
 
     def get(self, key: int | Value) -> Value | None:
-        int_key = key if type(key) is int else key.get_integer()
+        int_key = key if isinstance(key, int) else key.get_integer()
         if int_key is not None:
             if 1 <= int_key <= len(self._list):
                 return self._list[int_key - 1]
@@ -24,7 +24,7 @@ class Table:
         return self._map.get(key, None)
 
     def set(self, key: int | Value, value: Value):
-        int_key = key if type(key) is int else key.get_integer()
+        int_key = key if isinstance(key, int) else key.get_integer()
         if value.is_nil():
             if int_key is not None:
                 if 1 <= int_key <= len(self._list):
@@ -51,6 +51,8 @@ class Table:
             if len(self._list) > 0:
                 return Value(1), self._list[0]
             for k in self._map:
+                if isinstance(k, int):
+                    k = Value.number(k)
                 return k, self._map[k]
             return None
 
@@ -68,6 +70,8 @@ class Table:
         found = False
         for k in self._map:
             if found:
+                if isinstance(k, int):
+                    k = Value.number(k)
                 return k, self._map[k]
             if k == key:
                 found = True

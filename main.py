@@ -25,7 +25,7 @@ class LuaVM:
         return state.fetch()
 
     @staticmethod
-    def excute(state: LuaState) -> bool:
+    def execute(state: LuaState) -> bool:
         inst = LuaVM.fetch(state)
         if inst is None:
             return False
@@ -42,7 +42,7 @@ class LuaVM:
 
     @staticmethod
     def get_rk(state: LuaState, rk: int):
-        return state._get_rk(rk)
+        return state.get_rk(rk)
 
 
 class PyLua:

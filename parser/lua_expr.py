@@ -569,9 +569,11 @@ class FuncCallExpr(Expr):
             return [StringExpr.parse(lexer)]
         else:
             return []
-
+   
+    # cnt: return count
     def codegen(self, info: FuncInfo, reg: int = -1, cnt: int = 0):
-        func_reg = info.alloc_reg()
+        regs_cnt = max(len(self.args) + 1, cnt)
+        func_reg = info.alloc_regs(regs_cnt) if reg == -1 else reg
 
         # Handle method calls (obj:method(args))
         if self.name_expr:
@@ -589,21 +591,22 @@ class FuncCallExpr(Expr):
             self.prefix_expr.codegen(info, func_reg)
 
         # Generate code for arguments
-        arg_reg = info.alloc_regs(len(self.args))
+        # arg_reg = info.alloc_regs(len(self.args))
         for i, arg in enumerate(self.args):
-            arg.codegen(info, arg_reg + i)
+            arg.codegen(info, func_reg + 1 + i) # skip func reg
 
         nargs = len(self.args) + (1 if self.name_expr else 0)  # +1 for self
         CodegenInst.call(info, func_reg, nargs, cnt)
 
         # Move result to target register
         # if func_reg != reg:
-        #     CodegenInst.move(info, reg, func_reg)
+        #    CodegenInst.move(info, reg, func_reg)
 
         # Free registers
-        if self.args:
-            info.free_regs(len(self.args))
-        info.free_reg()
+        if func_reg != reg:
+            info.free_regs(regs_cnt)
+
+        # info.free_reg()
 
 
 class FuncDefExpr(Expr):
@@ -611,18 +614,15 @@ class FuncDefExpr(Expr):
     param_names: list[NameExpr]
     is_vararg: bool
     body: Block
-    ret_exps: list[Expr]
 
-    def __init__(self, param_names: list[NameExpr], ret_exps: list[Expr], is_vararg: bool, body: Block):
+    def __init__(self, param_names: list[NameExpr], is_vararg: bool, body: Block):
         self.param_names = param_names
-        self.ret_exps = ret_exps
         self.is_vararg = is_vararg
         self.body = body
 
     @classmethod
     def parse(cls, lexer: Lexer, colon: bool = False) -> FuncDefExpr:
         from .lua_block import Block
-        from .lua_stat import ReturnStmt
 
         lexer.consume("LPAREN")
 
@@ -642,13 +642,9 @@ class FuncDefExpr(Expr):
         lexer.consume("RPAREN")
 
         body = Block.parse(lexer)
-        if lexer.current().is_return():
-            ret_exps = ReturnStmt.parse_list(lexer)
-        else:
-            ret_exps = []
         lexer.consume("END")
 
-        return cls(param_names, ret_exps, is_vararg, body)
+        return cls(param_names, is_vararg, body)
 
     def codegen(self, info: FuncInfo, reg: int, cnt: int = 1):
         func_info = FuncInfo(parent=info)

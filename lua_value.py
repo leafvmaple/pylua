@@ -8,7 +8,7 @@ from lua_table import Table
 from lua_function import Closure, LClosure, PClosure
 
 
-ValueType: TypeAlias = str | float | int | bool | Table | Closure | None
+LuaValue: TypeAlias = str | float | int | bool | Table | Closure | None
 
 
 class LUA_TYPE(Enum):
@@ -24,9 +24,9 @@ class LUA_TYPE(Enum):
 
 
 class Value:
-    value: ValueType
+    value: LuaValue
 
-    def __init__(self, value: ValueType):
+    def __init__(self, value: LuaValue):
         if value is not None:
             self.value = value
         self.conv_float_to_int()

@@ -7,9 +7,7 @@ from structs.instruction import Instruction
 if TYPE_CHECKING:
     from lua_state import LuaState
     from lua_value import Value
-
-
-PyFunction: TypeAlias = Callable[[LuaState], int]
+    PyFunction: TypeAlias = Callable[[LuaState], int]
 
 
 class LocalVar:
@@ -22,12 +20,12 @@ class LocalVar:
 
 
 class Debug:
-    lineinfos: list[int]
+    line_infos: list[int]
     loc_vars: list[LocalVar]
     upvalues: list[str]
 
     def __init__(self):
-        self.lineinfos = []
+        self.line_infos = []
         self.loc_vars = []
         self.upvalues = []
 
@@ -46,7 +44,7 @@ class Proto:
     source: str
     type: str = "main"
     line_defined: int
-    lastlinedefined: int
+    last_line_defined: int
     num_upvalues: int
     num_params: int
     is_vararg: bool
@@ -61,7 +59,7 @@ class Proto:
 
     def __str__(self) -> str:
         parts: list[str] = []
-        parts.append(f"{self.type} <{self.source}:{self.line_defined},{self.lastlinedefined}> ({len(self.codes)} instructions)")
+        parts.append(f"{self.type} <{self.source}:{self.line_defined},{self.last_line_defined}> ({len(self.codes)} instructions)")
         parts.append(f"{self.num_params} params, {self.max_stack_size} slots, {len(self.debug.upvalues)} upvalues, \
                      {len(self.debug.loc_vars)} locals, {len(self.consts)} constants, {len(self.protos)} functions")
         parts.extend(f"\t{pc + 1}\t{code}" for pc, code in enumerate(self.codes))

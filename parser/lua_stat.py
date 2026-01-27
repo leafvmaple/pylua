@@ -416,12 +416,12 @@ class ForNumStat(Stmt):
 class ForInStat(Stmt):
     """for vars in expr list do ... end"""
     var_names: list[NameExpr]
-    exps: list[Expr]
+    exprs: list[Expr]
     block: Block
 
     def __init__(self, var_names: list[NameExpr], exps: list[Expr], block: Block):
         self.var_names = var_names
-        self.exps = exps
+        self.exprs = exps
         self.block = block
 
     @classmethod
@@ -434,46 +434,44 @@ class ForInStat(Stmt):
             var_names.append(NameExpr.parse(lexer))
 
         lexer.consume("IN")
-        exps = Expr.parse_list(lexer)
+        exprs = Expr.parse_list(lexer)
         lexer.consume("DO")
 
         block = Block.parse(lexer)
         lexer.consume("END")
 
-        return cls(var_names, exps, block)
+        return cls(var_names, exprs, block)
 
     def codegen(self, info: FuncInfo):
         info.enter_scope()
 
-        # Allocate registers for iterator function, state, control variable
-        iter_reg = info.alloc_reg()
-        state_reg = info.alloc_reg()
-        ctrl_reg = info.alloc_reg()
+        reg = info.used_regs
 
-        # Evaluate iterator expressions
-        for i, exp in enumerate(self.exps[:3]):
-            exp.codegen(info, iter_reg + i)
+        iter_decl = LocalVarDeclStat([NameExpr("(for generator)"), NameExpr("(for state)"), NameExpr("(for control)")], self.exprs)
+        iter_decl.codegen(info)
 
         # Add loop variables to scope
         for varname in self.var_names:
             info.add_local_var(varname.name)
 
-        # TFORLOOP instruction
-        pc_tforloop = info.current_pc()
-        CodegenInst.tforloop(info, iter_reg, len(self.var_names))
+        # info.alloc_reg() # func
 
-        pc_jmp_to_end = info.current_pc()
+        pc_jump = info.current_pc()
         CodegenInst.jmp(info, 0)  # Placeholder
 
         # Loop body
         self.block.codegen(info)
 
-        # Jump back to TFORLOOP
-        CodegenInst.jmp(info, pc_tforloop - info.current_pc() - 1)
+        # TFORLOOP instruction
+        pc_tforloop = info.current_pc()
+        CodegenInst.tforloop(info, reg, len(self.var_names))
+
+        CodegenInst.jmp(info, pc_jump - pc_tforloop - 1)
 
         # Patch jump to end
-        pc_end = info.current_pc()
-        info.insts[pc_jmp_to_end].set_sbx((pc_end - pc_jmp_to_end - 1) << 14)
+        info.insts[pc_jump].set_sbx(pc_tforloop - pc_jump - 1)
+
+        # info.free_reg()
 
         info.exit_scope()
 
@@ -496,11 +494,11 @@ class LocalStmt(Stmt):
 class LocalVarDeclStat(Stmt):
     """local vars [= exp list]"""
     var_names: list[NameExpr]
-    exps: list[Expr]
+    exprs: list[Expr]
 
     def __init__(self, var_names: list[NameExpr], exps: list[Expr]):
         self.var_names = var_names
-        self.exps = exps
+        self.exprs = exps
 
     @classmethod
     def parse(cls, lexer: Lexer) -> LocalVarDeclStat:
@@ -517,12 +515,17 @@ class LocalVarDeclStat(Stmt):
         return cls(var_names, exps)
 
     def codegen(self, info: FuncInfo):
-        for i in range(len(self.var_names)):
-            local = info.add_local_var(self.var_names[i].name)
-            if i < len(self.exps):
-                self.exps[i].codegen(info, local.reg_idx)
+         for i in range(len(self.var_names)):
+            var = info.add_local_var(self.var_names[i].name)
+            if i == len(self.exprs) - 1 and type(self.exprs[i]) is FuncCallExpr:
+                for j in range(i + 1, len(self.var_names)):
+                    info.add_local_var(self.var_names[j].name)
+                self.exprs[i].codegen(info, var.reg_idx, len(self.var_names) - i)
+                break
+            if i < len(self.exprs):
+                self.exprs[i].codegen(info, var.reg_idx)
             else:
-                CodegenInst.load_nil(info, local.reg_idx, 1)
+                CodegenInst.load_nil(info, var.reg_idx, 1)
 
 
 class AssignStmt(Stmt):
@@ -542,9 +545,9 @@ class AssignStmt(Stmt):
             varlist.append(Expr.parse(lexer))
 
         lexer.consume("ASSIGN")
-        explist = Expr.parse_list(lexer)
+        expr_list = Expr.parse_list(lexer)
 
-        return cls(varlist, explist)
+        return cls(varlist, expr_list)
 
     @classmethod
     def parse_func(cls, lexer: Lexer) -> AssignStmt:

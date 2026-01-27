@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from typing import TypeAlias, TYPE_CHECKING
-from structs.instruction import Instruction
 
 if TYPE_CHECKING:
+    from structs.instruction import Instruction
     from lua_function import Proto, LocalVar
 
 Const: TypeAlias = int | float | str | bool
@@ -176,22 +176,26 @@ class FuncInfo:
         return self.upval_names.get(name)
 
     def emit_abc(self, opcode: int, a: int, b: int, c: int) -> None:
+        from structs.instruction import Instruction
         """Emit an ABC format instruction."""
         inst = (opcode & 0x3F) | ((a & 0xFF) << 6) | ((b & 0x1FF) << 23) | ((c & 0x1FF) << 14)
         self.insts.append(Instruction(inst))
 
     def emit_abx(self, opcode: int, a: int, bx: int) -> None:
+        from structs.instruction import Instruction
         """Emit an ABx format instruction."""
         inst = (opcode & 0x3F) | ((a & 0xFF) << 6) | ((bx & 0x3FFFF) << 14)
         self.insts.append(Instruction(inst))
 
     def emit_asbx(self, opcode: int, a: int, sbx: int) -> None:
+        from structs.instruction import Instruction
         """Emit an AsBx format instruction."""
         bias = 131071  # 2^18 - 1
         inst = (opcode & 0x3F) | ((a & 0xFF) << 6) | (((sbx + bias) & 0x3FFFF) << 14)
         self.insts.append(Instruction(inst))
 
     def emit_ax(self, opcode: int, ax: int) -> None:
+        from structs.instruction import Instruction
         """Emit an Ax format instruction."""
         inst = (opcode & 0x3F) | ((ax & 0x3FFFFFF) << 6)
         self.insts.append(Instruction(inst))

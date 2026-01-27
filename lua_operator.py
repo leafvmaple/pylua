@@ -1,18 +1,19 @@
 """Lua VM operators implementation."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional, Callable
+from typing import TYPE_CHECKING, Callable, TypeAlias
 
 from structs.instruction import Instruction
 from lua_value import Value
 from lua_table import Table
 from lua_function import LClosure
+from lua_protocols import LuaCheckable
 
 if TYPE_CHECKING:
     from lua_state import LuaState
 
 
-class CheckNumber:
+class CheckNumber(LuaCheckable):
     @staticmethod
     def check(val: Value) -> bool:
         val.conv_str_to_number()
@@ -25,7 +26,11 @@ class CheckNumber:
         return CheckNumber.check(va) and CheckNumber.check(vb)
 
 
-class CompareCheck:
+class CompareCheck(LuaCheckable):
+    @staticmethod
+    def check(val: Value) -> bool:
+        assert False, "CompareCheck.check should not be called"
+
     @staticmethod
     def checks(va: Value, vb: Value) -> bool:
         if va.is_number() and vb.is_number():
@@ -35,43 +40,73 @@ class CompareCheck:
         return False
 
 
-class ArithOperator:
-    op: Callable
-    check: CheckNumber
+UnaryFuncType: TypeAlias = Callable[[int | float | bool], int | float | bool]
+BinaryFuncType: TypeAlias = Callable[[int | float, int | float], int | float]
+
+
+class UnaryOperator:
+    op: UnaryFuncType
+    check: LuaCheckable
     meta: str
 
-    def __init__(self, op: Callable, check: CheckNumber, meta: str):
+    def __init__(self, op: UnaryFuncType, check: LuaCheckable, meta: str):
         self.op = op
         self.meta = meta
         self.check = check
 
-    def solve(self, L: LuaState, a: int, b: Optional[int] = None) -> Value | bool:
-        va = L._get_rk(a)
+    def solve(self, L: LuaState, a: int) -> Value | bool:
+        va = L.get_rk(a)
         mt = va.get_metatable()
-        if b is None:
-            if self.check.check(va):
-                return Value.number(self.op(va.value))
-            else:
-                if mt:
-                    meta_func = mt.get(Value.string(self.meta))
-                    if meta_func and meta_func.is_function():
-                        return L._lua_call(meta_func.value, va)
+        if self.check.check(va):
+            assert isinstance(va.value, (int, float))
+            return Value.number(self.op(va.value))
         else:
-            vb = L._get_rk(b)
-            if self.check.checks(va, vb):
-                return Value.number(self.op(va.value, vb.value))
-            else:
-                if mt is None:
-                    mt = vb.get_metatable()
-                if mt:
-                    meta_func = mt.get(Value.string(self.meta))
-                    if meta_func and meta_func.is_function():
-                        return L._lua_call(meta_func.value, va, vb)
+            if mt:
+                meta_func = mt.get(Value.string(self.meta))
+                if meta_func and meta_func.is_function():
+                    assert type(meta_func.value) is LClosure
+                    return L.lua_call(meta_func.value, va)
         return False
 
-    def arith(self, L: LuaState, idx: int, a: int, b: Optional[int] = None):
-        res = self.solve(L, a, b)
+    def arith(self, L: LuaState, idx: int, a: int):
+        res = self.solve(L, a)
         if res:
+            assert type(res) is Value
+            L.stack[idx] = res
+        else:
+            raise TypeError("arithmetic error")
+
+
+class BinaryOperator:
+    op: BinaryFuncType
+    check: LuaCheckable
+    meta: str
+
+    def __init__(self, op: BinaryFuncType, check: LuaCheckable, meta: str):
+        self.op = op
+        self.meta = meta
+        self.check = check
+
+    def solve(self, L: LuaState, a: int, b: int) -> Value | bool:
+        va = L.get_rk(a)
+        vb = L.get_rk(b)
+        mt = va.get_metatable()
+        if mt is None:
+            mt = vb.get_metatable()
+        if self.check.checks(va, vb):
+            assert isinstance(va.value, (int, float)) and isinstance(vb.value, (int, float))
+            return Value.number(self.op(va.value, vb.value))
+        else:
+            if mt:
+                meta_func = mt.get(Value.string(self.meta))
+                if meta_func and meta_func.is_function():
+                    assert type(meta_func.value) is LClosure
+                    return L.lua_call(meta_func.value, va, vb)
+        return False
+    
+    def arith(self, L: LuaState, idx: int, a: int, b: int):
+        res = self.solve(L, a, b)
+        if type(res) is Value:
             L.stack[idx] = res
         else:
             raise TypeError("arithmetic error")
@@ -79,23 +114,28 @@ class ArithOperator:
     def compare(self, L: LuaState, a: int, b: int) -> bool:
         res = self.solve(L, a, b)
         if type(res) is Value and res.is_boolean():
+            assert type(res.value) is bool
             return res.value
         return False
 
 
-ARITH = {
-    "ADD": ArithOperator(lambda a, b: a + b, CheckNumber, "__add"),
-    "SUB": ArithOperator(lambda a, b: a - b, CheckNumber, "__sub"),
-    "MUL": ArithOperator(lambda a, b: a * b, CheckNumber, "__mul"),
-    "DIV": ArithOperator(lambda a, b: a / b, CheckNumber, "__div"),
-    "MOD": ArithOperator(lambda a, b: a % b, CheckNumber, "__mod"),
-    "POW": ArithOperator(lambda a, b: a ** b, CheckNumber, "__pow"),
-    "UNM": ArithOperator(lambda a: -a, CheckNumber, "__unm"),
-    "BNOT": ArithOperator(lambda a: ~a, CheckNumber, "__bnot"),
+UNARY_ARITH = {
+    "UNM": UnaryOperator(lambda a: -a, CheckNumber, "__unm"),
+    "BONA": UnaryOperator(lambda a: not a, CheckNumber, "__bnot")
+}
 
-    "EQ": ArithOperator(lambda a, b: a == b, CompareCheck, "__eq"),
-    "LT": ArithOperator(lambda a, b: a < b, CompareCheck, "__lt"),
-    "LE": ArithOperator(lambda a, b: a <= b, CompareCheck, "__le"),
+
+BINARY_ARITH = {
+    "ADD": BinaryOperator(lambda a, b: a + b, CheckNumber, "__add"),
+    "SUB": BinaryOperator(lambda a, b: a - b, CheckNumber, "__sub"),
+    "MUL": BinaryOperator(lambda a, b: a * b, CheckNumber, "__mul"),
+    "DIV": BinaryOperator(lambda a, b: a / b, CheckNumber, "__div"),
+    "MOD": BinaryOperator(lambda a, b: a % b, CheckNumber, "__mod"),
+    "POW": BinaryOperator(lambda a, b: a ** b, CheckNumber, "__pow"),
+
+    "EQ": BinaryOperator(lambda a, b: a == b, CompareCheck, "__eq"),
+    "LT": BinaryOperator(lambda a, b: a < b, CompareCheck, "__lt"),
+    "LE": BinaryOperator(lambda a, b: a <= b, CompareCheck, "__le"),
 }
 
 
@@ -137,16 +177,17 @@ class Operator:
     def GETGLOBAL(inst: Instruction, state: LuaState):
         a, bx = inst.abx()
         name = state.func.consts[bx].value
+        assert type(name) is str
         state.stack[a] = state.get_global(name)
 
     @staticmethod
     def GETTABLE(inst: Instruction, state: LuaState):
         a, b, c = inst.abc()
         table_value = state.stack[b]
-        key = state._get_rk(c)
+        key = state.get_rk(c)
         if table_value.is_table():
             result = state.gettable(b, key)
-            state.stack[a] = result if result is not None else Value.nil()
+            state.stack[a] = result
         else:
             state.stack[a] = Value.nil()
 
@@ -154,6 +195,7 @@ class Operator:
     def SETGLOBAL(inst: Instruction, state: LuaState):
         a, bx = inst.abx()
         name = state.func.consts[bx].value
+        assert type(name) is str
         state.set_global(name, state.stack[a])
 
     @staticmethod
@@ -167,9 +209,10 @@ class Operator:
     def SETTABLE(inst: Instruction, state: LuaState):
         a, b, c = inst.abc()
         table_value = state.stack[a]
-        key = state._get_rk(b)
-        value = state._get_rk(c)
+        key = state.get_rk(b)
+        value = state.get_rk(c)
         if table_value.is_table():
+            assert type(table_value.value) is Table
             table_value.value.set(key, value)
 
     @staticmethod
@@ -181,44 +224,44 @@ class Operator:
     def SELF(inst: Instruction, state: LuaState):
         a, b, c = inst.abc()
         state.stack[a + 1] = state.stack[b]
-        key = state._get_rk(c)
+        key = state.get_rk(c)
         result = state.gettable(b, key)
-        state.stack[a] = result if result is not None else Value.nil()
+        state.stack[a] = result
 
     @staticmethod
     def ADD(inst: Instruction, state: LuaState):
         a, b, c = inst.abc()
-        ARITH["ADD"].arith(state, a, b, c)
+        BINARY_ARITH["ADD"].arith(state, a, b, c)
 
     @staticmethod
     def SUB(inst: Instruction, state: LuaState):
         a, b, c = inst.abc()
-        ARITH["SUB"].arith(state, a, b, c)
+        BINARY_ARITH["SUB"].arith(state, a, b, c)
 
     @staticmethod
     def MUL(inst: Instruction, state: LuaState):
         a, b, c = inst.abc()
-        ARITH["MUL"].arith(state, a, b, c)
+        BINARY_ARITH["MUL"].arith(state, a, b, c)
 
     @staticmethod
     def DIV(inst: Instruction, state: LuaState):
         a, b, c = inst.abc()
-        ARITH["DIV"].arith(state, a, b, c)
+        BINARY_ARITH["DIV"].arith(state, a, b, c)
 
     @staticmethod
     def MOD(inst: Instruction, state: LuaState):
         a, b, c = inst.abc()
-        ARITH["MOD"].arith(state, a, b, c)
+        BINARY_ARITH["MOD"].arith(state, a, b, c)
 
     @staticmethod
     def POW(inst: Instruction, state: LuaState):
         a, b, c = inst.abc()
-        ARITH["POW"].arith(state, a, b, c)
+        BINARY_ARITH["POW"].arith(state, a, b, c)
 
     @staticmethod
     def UNM(inst: Instruction, state: LuaState):
         a, b, _ = inst.abc()
-        ARITH["UNM"].arith(state, a, b)
+        UNARY_ARITH["UNM"].arith(state, a, b)
 
     @staticmethod
     def NOT(inst: Instruction, state: LuaState):
@@ -238,6 +281,7 @@ class Operator:
             val = state.stack[i]
             val.conv_number_to_str()
             if val.is_string():
+                assert type(val.value) is str
                 result += val.value
         state.stack[a] = Value.string(result)
 
@@ -249,31 +293,34 @@ class Operator:
     @staticmethod
     def EQ(inst: Instruction, state: LuaState):
         a, b, c = inst.abc()
-        if ARITH["EQ"].compare(state, b, c) == (a != 0):
-            inst = state.fetch()
-            assert inst.op_name() == "JMP"
-            Operator.JMP(inst, state)
+        if BINARY_ARITH["EQ"].compare(state, b, c) == (a != 0):
+            next_inst = state.fetch()
+            assert type(next_inst) is Instruction and next_inst.op_name() == "JMP"
+            Operator.JMP(next_inst, state)
         else:
+            assert type(state.call_info[-1]) is LClosure
             state.call_info[-1].pc += 1
 
     @staticmethod
     def LT(inst: Instruction, state: LuaState):
         a, b, c = inst.abc()
-        if ARITH["LT"].compare(state, b, c) == (a != 0):
-            inst = state.fetch()
-            assert inst.op_name() == "JMP"
-            Operator.JMP(inst, state)
+        if BINARY_ARITH["LT"].compare(state, b, c) == (a != 0):
+            next_inst = state.fetch()
+            assert type(next_inst) is Instruction and next_inst.op_name() == "JMP"
+            Operator.JMP(next_inst, state)
         else:
+            assert type(state.call_info[-1]) is LClosure
             state.call_info[-1].pc += 1
 
     @staticmethod
     def LE(inst: Instruction, state: LuaState):
         a, b, c = inst.abc()
-        if ARITH["LE"].compare(state, b, c) == (a != 0):
-            inst = state.fetch()
-            assert inst.op_name() == "JMP"
-            Operator.JMP(inst, state)
+        if BINARY_ARITH["LE"].compare(state, b, c) == (a != 0):
+            next_inst = state.fetch()
+            assert type(next_inst) is Instruction and next_inst.op_name() == "JMP"
+            Operator.JMP(next_inst, state)
         else:
+            assert type(state.call_info[-1]) is LClosure
             state.call_info[-1].pc += 1
 
     @staticmethod
@@ -286,6 +333,7 @@ class Operator:
     def TESTSET(inst: Instruction, state: LuaState):
         a, b, c = inst.abc()
         if state.stack[b].get_boolean() == (c != 0):
+            assert type(state.call_info[-1]) is LClosure
             state.call_info[-1].pc += 1
         else:
             state.stack[a] = state.stack[b]
@@ -295,8 +343,8 @@ class Operator:
     def CALL(inst: Instruction, state: LuaState):
         a, b, c = inst.abc()
         nargs = b - 1 if b != 0 else len(state.stack) - a - 1
-        nrets = c - 1
-        state.call(a, nargs, nrets)
+        num_rets = c - 1
+        state.call(a, nargs, num_rets)
 
     @staticmethod
     def TAILCALL(inst: Instruction, state: LuaState):
@@ -308,7 +356,7 @@ class Operator:
     def RETURN(inst: Instruction, state: LuaState):
         a, b, _ = inst.abc()
         ret_count = b - 1 if b != 0 else len(state.stack) - a
-        state.poscall(a, ret_count)
+        state.pos_call(a, ret_count)
 
     @staticmethod
     def FORLOOP(inst: Instruction, state: LuaState):
@@ -377,6 +425,7 @@ class Operator:
     def VARARG(inst: Instruction, state: LuaState):
         a, b, _ = inst.abc()
         closure = state.call_info[-1]
+        assert type(closure) is LClosure
         n = b - 1 if b != 0 else len(closure.varargs)
         for i in range(n):
             if i < len(closure.varargs):
