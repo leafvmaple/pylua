@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 from typing import Optional, TYPE_CHECKING
-from lua_operator import Operator
+from vm.operator import Operator
 from structs.instruction import Instruction
-from lua_value import Value
-from lua_table import Table
-from lua_function import LClosure, PClosure, Proto
-from lua_builtins import BUILTIN
+from structs.value import Value
+from structs.table import Table
+from structs.function import LClosure, PClosure, Proto
+from vm.builtins import BUILTIN
 
 if TYPE_CHECKING:
-    from lua_function import PyFunction
+    from structs.function import PyFunction
 
 LUA_REGISTRY_INDEX = -10000
 LUA_GLOBALS_INDEX = -10002

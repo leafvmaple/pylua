@@ -8,9 +8,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .lua_expr import Expr
-    from .lua_stat import Stmt
-    from .lua_block import Block
+    from .expr import Expr
+    from .stat import Stmt
+    from .block import Block
 
 
 def convert_value(value: Any) -> Any:
@@ -19,9 +19,9 @@ def convert_value(value: Any) -> Any:
     Handles AST nodes, lists, tuples, and primitive values.
     """
     # Import here to avoid circular dependencies
-    from .lua_expr import Expr
-    from .lua_stat import Stmt
-    from .lua_block import Block
+    from .expr import Expr
+    from .stat import Stmt
+    from .block import Block
 
     if isinstance(value, (Expr, Stmt, Block)):
         return value.to_dict()

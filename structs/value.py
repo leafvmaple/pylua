@@ -3,9 +3,9 @@ from __future__ import annotations
 from enum import Enum
 
 from typing import TypeAlias
-from lua_protocols import LuaCallable
-from lua_table import Table
-from lua_function import Closure, LClosure, PClosure
+from vm.protocols import LuaCallable
+from structs.table import Table
+from structs.function import Closure, LClosure, PClosure
 
 
 LuaValue: TypeAlias = str | float | int | bool | Table | Closure | None
@@ -150,7 +150,7 @@ class Value:
         index = mt.get(Value.string("__index")) if mt else None
         if index:
             if index.is_function():
-                assert caller is not None, "__index meta method requires a caller"
+                assert caller is LuaCallable, "__index meta method requires a caller"
                 return caller(index.value, self, key)
             if index.is_table():
                 return index.gettable(key, caller)
@@ -160,7 +160,7 @@ class Value:
         mt = self.get_metatable()
         length = mt.get(Value.string("__len")) if mt else None
         if length and length.is_function():
-            assert caller is not None, "__len meta method requires a caller"
+            assert caller is LuaCallable, "__index meta method requires a caller"
             result = caller(length.value, self)
             int_result = result.get_integer()
             return int_result if int_result is not None else 0

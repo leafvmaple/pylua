@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from lua_io import Reader
-from lua_value import LUA_TYPE, Value
+
+from structs.value import LUA_TYPE, Value
 from structs.instruction import Instruction
-from lua_function import LocalVar, Debug, Proto
-from lua_header import Header
+from structs.function import LocalVar, Debug, Proto
+from .header import Header
+from .io import Reader
 
 
 def read_header(file: Reader) -> Header:

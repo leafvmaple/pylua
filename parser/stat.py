@@ -6,11 +6,11 @@ logic.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
-from .lua_lexer import Lexer
-from .lua_expr import Expr, NameExpr, FuncCallExpr, TrueExpr, FuncDefExpr, TableAccessExpr
+from .lexer import Lexer
+from .expr import Expr, NameExpr, FuncCallExpr, TrueExpr, FuncDefExpr, TableAccessExpr
 
 if TYPE_CHECKING:
-    from .lua_block import Block
+    from .block import Block
 
 from codegen.func import FuncInfo
 from codegen.inst import CodegenInst
@@ -147,7 +147,7 @@ class DoStmt(Stmt):
 
     @classmethod
     def parse(cls, lexer: Lexer) -> DoStmt:
-        from .lua_block import Block
+        from .block import Block
 
         lexer.consume("DO")
         block = Block.parse(lexer)
@@ -171,7 +171,7 @@ class WhileStmt(Stmt):
 
     @classmethod
     def parse(cls, lexer: Lexer) -> WhileStmt:
-        from .lua_block import Block
+        from .block import Block
 
         lexer.consume("WHILE")
         exp = Expr.parse(lexer)
@@ -218,7 +218,7 @@ class RepeatStmt(Stmt):
 
     @classmethod
     def parse(cls, lexer: Lexer) -> RepeatStmt:
-        from .lua_block import Block
+        from .block import Block
 
         lexer.consume("REPEAT")
         block = Block.parse(lexer)
@@ -258,7 +258,7 @@ class IfStmt(Stmt):
     @classmethod
     def parse(cls, lexer: Lexer) -> IfStmt:
         """Parse if-then-elseif-else-end statement."""
-        from .lua_block import Block
+        from .block import Block
 
         exps: list[Expr] = []
         blocks: list[Block] = []
@@ -360,7 +360,7 @@ class ForNumStat(Stmt):
 
     @classmethod
     def parse_with_name(cls, lexer: Lexer, varname: NameExpr) -> ForNumStat:
-        from .lua_block import Block
+        from .block import Block
         lexer.consume("ASSIGN")
         init_expr = Expr.parse(lexer)
         lexer.consume("COMMA")
@@ -426,7 +426,7 @@ class ForInStat(Stmt):
 
     @classmethod
     def parse_with_name(cls, lexer: Lexer, first_var: NameExpr) -> ForInStat:
-        from .lua_block import Block
+        from .block import Block
 
         var_names = [first_var]
         while lexer.current().type == "COMMA":

@@ -8,8 +8,8 @@ from __future__ import annotations
 from typing import Protocol, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from lua_value import Value
-    from lua_function import LClosure
+    from structs.value import Value
+    from structs.function import LClosure
 
 
 class LuaCallable(Protocol):

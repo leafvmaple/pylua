@@ -4,9 +4,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from lua_state import LuaState
+    from vm.state import LuaState
 
-from lua_value import Value
+from structs.value import Value
 
 
 class BUILTIN:

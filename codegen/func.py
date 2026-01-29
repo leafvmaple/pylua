@@ -4,7 +4,7 @@ from typing import TypeAlias, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from structs.instruction import Instruction
-    from lua_function import Proto, LocalVar
+    from structs.function import Proto, LocalVar
 
 Const: TypeAlias = int | float | str | bool
 
@@ -20,7 +20,7 @@ class LocalVarInfo:
         self.scope_depth = scope_depth
 
     def to_local_var(self) -> LocalVar:
-        from lua_function import LocalVar
+        from structs.function import LocalVar
         local_var = LocalVar()
         local_var.name = self.name
         local_var.start_pc = 0
@@ -74,8 +74,8 @@ class FuncInfo:
         self.max_regs = 0
 
     def to_proto(self) -> Proto:
-        from lua_function import Proto, Debug
-        from lua_value import Value
+        from structs.function import Proto, Debug
+        from structs.value import Value
         proto = Proto()
         # proto.source = source
         proto.num_params = self.num_params

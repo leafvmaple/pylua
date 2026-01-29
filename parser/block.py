@@ -4,9 +4,9 @@ import json
 
 from typing import Any
 
-from .lua_lexer import Lexer
-from .lua_expr import Expr
-from .lua_stat import Stmt, ReturnStmt
+from .lexer import Lexer
+from .expr import Expr
+from .stat import Stmt, ReturnStmt
 from codegen.func import FuncInfo
 from codegen.inst import CodegenInst
 
@@ -46,14 +46,14 @@ class Block:
         return json.dumps(self.to_dict(), indent='  ', ensure_ascii=False)
 
 
-class Chunk:
+class Parser:
     block: Block
 
     def __init__(self, block: Block):
         self.block = block
 
     @classmethod
-    def parse(cls, lexer: Lexer) -> Chunk:
+    def from_lexer(cls, lexer: Lexer) -> Parser:
         block = Block.parse(lexer)
 
         return cls(block)

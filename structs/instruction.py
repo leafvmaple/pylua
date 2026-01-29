@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 from codegen.inst import OpCode, OPCODES, iABC, iABx, iAsBx, OpArgN, OpArgK
 
 if TYPE_CHECKING:
-    from lua_value import Value
+    from structs.value import Value
 
 
 def a_to_bitset(a: int) -> int:

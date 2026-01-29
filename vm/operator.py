@@ -4,10 +4,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Callable, TypeAlias
 
 from structs.instruction import Instruction
-from lua_value import Value
-from lua_table import Table
-from lua_function import LClosure
-from lua_protocols import LuaCheckable
+from structs.value import Value
+from structs.table import Table
+from structs.function import LClosure
+from vm.protocols import LuaCheckable
 
 if TYPE_CHECKING:
     from lua_state import LuaState

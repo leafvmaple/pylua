@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING, Callable, TypeAlias
 from structs.instruction import Instruction
 
 if TYPE_CHECKING:
-    from lua_state import LuaState
-    from lua_value import Value
+    from vm.state import LuaState
+    from structs.value import Value
     PyFunction: TypeAlias = Callable[[LuaState], int]
 
 
@@ -84,7 +84,7 @@ class LClosure(Closure):
     pc: int
 
     def __init__(self, func: Proto):
-        from lua_value import Value
+        from structs.value import Value
         self.stack = [Value.nil()] * func.max_stack_size
         self.upvalues = [Value.nil()] * func.num_upvalues
         # Initialize upvalues based on function prototype

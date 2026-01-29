@@ -7,8 +7,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .lua_lexer import Lexer
-    from .lua_stat import Block
+    from .lexer import Lexer
+    from .stat import Block
 
 from codegen.func import FuncInfo
 from codegen.inst import CodegenInst
@@ -622,7 +622,7 @@ class FuncDefExpr(Expr):
 
     @classmethod
     def parse(cls, lexer: Lexer, colon: bool = False) -> FuncDefExpr:
-        from .lua_block import Block
+        from .block import Block
 
         lexer.consume("LPAREN")
 
