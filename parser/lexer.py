@@ -68,6 +68,10 @@ class Lexer:
         with open(filepath, 'r') as f:
             chunk = f.read()
         return cls(chunk, filepath)
+    
+    @classmethod
+    def from_string(cls, code: str, name: str = "<string>"):
+        return cls(code, name)
 
     def tokenize(self) -> None:
         self.tokens = []

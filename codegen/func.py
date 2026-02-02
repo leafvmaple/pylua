@@ -81,6 +81,7 @@ class FuncInfo:
         proto.num_params = self.num_params
         proto.is_vararg = self.is_vararg
         proto.max_stack_size = self.max_regs
+        proto.num_upvalues = len(self.upval_names)
         proto.codes = self.insts.copy()
         for const in self.constants:
             proto.consts.append(Value(const))

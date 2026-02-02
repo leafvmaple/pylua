@@ -130,8 +130,9 @@ class FuncCallStmt(Stmt):
         self.func_call = func_call
 
     def codegen(self, info: FuncInfo):
+        # FuncCallExpr.codegen already handles register allocation/deallocation
+        # when reg == -1 (default), so we don't need to free_reg here
         self.func_call.codegen(info)
-        info.free_reg()
 
 
 # ============================================================================

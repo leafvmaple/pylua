@@ -66,18 +66,19 @@ class LuaState:
 
     def push_closure(self, closure: LClosure | PClosure):
         self.call_info.append(closure)
-        assert type(closure) is LClosure
-        self.func = closure.func
+        if type(closure) is LClosure:
+            self.func = closure.func
+        # Always switch to closure's stack, regardless of type
         self.stack = closure.stack
 
-    def pop_closure(self) -> LClosure:
+    def pop_closure(self) -> LClosure | PClosure:
         frame = self.call_info.pop()
         if self.call_info:
             call_info = self.call_info[-1]
-            assert type(call_info) is LClosure
-            self.func = call_info.func
+            if type(call_info) is LClosure:
+                self.func = call_info.func
+            # Always restore stack from the current call_info
             self.stack = call_info.stack
-        assert type(frame) is LClosure
         return frame
 
     def register(self, name: str, func: PyFunction):

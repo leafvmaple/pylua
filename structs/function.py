@@ -55,7 +55,17 @@ class Proto:
     debug: Debug
 
     def __init__(self) -> None:
+        self.source = ""
+        self.line_defined = 0
+        self.last_line_defined = 0
+        self.num_upvalues = 0
+        self.num_params = 0
+        self.is_vararg = False
+        self.max_stack_size = 0
+        self.codes = []
         self.consts = []
+        self.protos = []
+        self.debug = Debug()
 
     def __str__(self) -> str:
         parts: list[str] = []

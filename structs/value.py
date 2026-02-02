@@ -27,8 +27,7 @@ class Value:
     value: LuaValue
 
     def __init__(self, value: LuaValue):
-        if value is not None:
-            self.value = value
+        self.value = value
         self.conv_float_to_int()
 
     @classmethod
@@ -192,4 +191,18 @@ class Value:
             return 'table'
         elif self.is_function():
             return 'function'
+        return str(self.value)
+    
+    def __str__(self) -> str:
+        """String representation for print() - no quotes for strings"""
+        if self.is_nil():
+            return 'nil'
+        elif self.is_boolean():
+            return 'true' if self.value else 'false'
+        elif self.is_string():
+            return str(self.value)
+        elif self.is_table():
+            return 'table: ' + hex(id(self.value))
+        elif self.is_function():
+            return 'function: ' + hex(id(self.value))
         return str(self.value)

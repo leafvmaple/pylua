@@ -573,7 +573,11 @@ class FuncCallExpr(Expr):
     # cnt: return count
     def codegen(self, info: FuncInfo, reg: int = -1, cnt: int = 0):
         regs_cnt = max(len(self.args) + 1, cnt)
-        func_reg = info.alloc_regs(regs_cnt) if reg == -1 else reg
+        func_reg = info.alloc_reg() if reg == -1 else reg
+        needed_regs = func_reg + regs_cnt
+        alloc_regs = needed_regs - info.used_regs
+        if alloc_regs > 0:
+            info.alloc_regs(alloc_regs)
 
         # Handle method calls (obj:method(args))
         if self.name_expr:
@@ -591,22 +595,22 @@ class FuncCallExpr(Expr):
             self.prefix_expr.codegen(info, func_reg)
 
         # Generate code for arguments
-        # arg_reg = info.alloc_regs(len(self.args))
+        # When an argument is a function call, it should expect 1 return value
         for i, arg in enumerate(self.args):
-            arg.codegen(info, func_reg + 1 + i) # skip func reg
+            if isinstance(arg, FuncCallExpr):
+                arg.codegen(info, func_reg + 1 + i, cnt=1)
+            else:
+                arg.codegen(info, func_reg + 1 + i)
 
         nargs = len(self.args) + (1 if self.name_expr else 0)  # +1 for self
         CodegenInst.call(info, func_reg, nargs, cnt)
 
-        # Move result to target register
-        # if func_reg != reg:
-        #    CodegenInst.move(info, reg, func_reg)
+        if alloc_regs > 0:
+            info.free_regs(alloc_regs)
 
         # Free registers
         if func_reg != reg:
-            info.free_regs(regs_cnt)
-
-        # info.free_reg()
+            info.free_reg()
 
 
 class FuncDefExpr(Expr):
@@ -656,6 +660,18 @@ class FuncDefExpr(Expr):
             func_info.add_local_var(param.name)
 
         self.body.codegen(func_info)
+        
+        # Generate return instruction
+        if self.body.ret_exprs:
+            num_rets = len(self.body.ret_exprs)
+            ret_reg = func_info.alloc_regs(num_rets)
+            for i in range(num_rets):
+                self.body.ret_exprs[i].codegen(func_info, ret_reg + i)
+            CodegenInst.ret(func_info, ret_reg, num_rets + 1)
+            func_info.free_regs(num_rets)
+        else:
+            CodegenInst.ret(func_info, 0, 1)
+        
         func_info.exit_scope()
 
         idx = len(info.sub_funcs)

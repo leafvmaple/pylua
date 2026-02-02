@@ -16,7 +16,7 @@ class BUILTIN:
         outputs: list[str] = []
         for i in range(n):
             outputs.append(str(state.stack[i]))
-        print(', '.join(outputs))
+        print('\t'.join(outputs))
         return 0
 
     @staticmethod
@@ -35,6 +35,7 @@ class BUILTIN:
 
     @staticmethod
     def lua_ipairsaux(state: LuaState) -> int:
+        from structs.table import Table
         table = state.stack[0]
         index = state.stack[1]
         if not table.is_table():
@@ -46,7 +47,7 @@ class BUILTIN:
         assert type(index.value) is int
         next_index = index.value + 1
 
-        assert type(table.value) is dict
+        assert type(table.value) is Table
         value = table.value.get(next_index)
         if value is not None:
             state.pushvalue(Value.number(next_index))
