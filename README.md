@@ -9,24 +9,40 @@
 - 词法分析与语法分析（parser/）
 - AST 与简单代码生成（codegen/）
 - 基础运行时与内建函数（如 `print`、`getmetatable`、`setmetatable` 等）
+- 命令行工具支持（pylua 和 pyluac）
 
 ## 目录结构
 
 ```text
 .
+├─ binary/            # 字节码读取相关
+│  ├─ header.py
+│  ├─ io.py
+│  └─ reader.py
 ├─ codegen/           # 代码生成相关
 │  ├─ func.py
 │  └─ inst.py
 ├─ parser/            # 词法/语法分析
+│  ├─ block.py
+│  ├─ expr.py
+│  ├─ lexer.py
 │  ├─ lua_ast_util.py
-│  ├─ lua_block.py
-│  ├─ lua_expr.py
-│  ├─ lua_lexer.py
-│  └─ lua_stat.py
+│  └─ stat.py
 ├─ structs/           # 数据结构
-│  └─ instruction.py
-├─ lua_*.py           # 运行时、值系统、字节码读取、内建函数等
-└─ main.py            # 入口示例
+│  ├─ function.py
+│  ├─ instruction.py
+│  ├─ table.py
+│  └─ value.py
+├─ vm/                # 虚拟机实现
+│  ├─ builtins.py
+│  ├─ lua_vm.py
+│  ├─ operator.py
+│  ├─ protocols.py
+│  └─ state.py
+├─ cli.py             # 命令行接口
+├─ pylua.py           # 解释器入口
+├─ pyluac.py          # 编译器入口
+└─ README.md          # 项目文档
 ```
 
 ## 环境要求
@@ -35,35 +51,43 @@
 
 ## 快速开始
 
-当前入口为 [main.py](main.py)。示例代码中会读取 `test2.lua` 和对应的 `test2.luac`，请自行准备这两个文件。
+### 使用解释器（pylua）
 
-1) 准备 Lua 源文件（示例：`test2.lua`）
-2) 使用 Lua 编译器生成字节码：
-   - `luac -o test2.luac test2.lua`
-3) 运行：
-   - `python main.py`
+1) 准备 Lua 源文件（示例：`test.lua`）
+2) 运行：
+   - `python pylua.py test.lua`
+
+### 使用编译器（pyluac）
+
+1) 准备 Lua 源文件（示例：`test.lua`）
+2) 编译为字节码：
+   - `python pyluac.py -o test.luac test.lua`
+3) 运行编译后的字节码：
+   - `python pylua.py test.luac`
 
 ## 使用示例
 
 ### 解析字节码
 
-- 参考 [main.py](main.py) 中的 `PyLua`：读取 `.luac` 并得到主函数原型（Proto）。
+- 参考 [cli.py](cli.py) 中的 `PyLua` 类：读取 `.luac` 并得到主函数原型（Proto）。
 
 ### 解析 Lua 源码并生成指令信息
 
-- 参考 [main.py](main.py) 中的 `Lexer` 与 `Chunk` 使用方式：
+- 参考 [cli.py](cli.py) 中的使用方式：
   - 词法分析：`Lexer.from_file(...)`
-  - 语法解析：`Chunk.parse(...)`
-  - 代码生成：`Chunk.to_info()`
+  - 语法解析：`Parser.from_lexer(lexer)`
+  - 代码生成：`parser.to_info()`
 
 ## 已知限制
 
 - 项目为实验性质，指令集、语法覆盖与标准库支持均不完整
-- 暂无命令行工具与测试用例
+- 字节码序列化功能正在开发中
 - 运行示例依赖本地 Lua 编译器生成 `.luac`
 
 ## Roadmap
 
 - 扩展 VM 指令集与运行时内建函数
 - 完善语法解析与代码生成
+- 实现完整的字节码序列化功能
 - 增加测试与示例
+- 优化性能与错误处理

@@ -239,7 +239,7 @@ class Lexer:
     def consume(self, expect: str | None = None) -> Token:
         token = self.current()
         if expect and token.type != expect:
-            raise SyntaxError(f"Expected {expect} but got {token.type} at line {self._line}")
+            raise SyntaxError(f"{self.chunk_name}:{token.line}: expected '{expect}' but got '{token.type}'")
         self.pos += 1
         return token
 

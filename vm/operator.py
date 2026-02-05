@@ -74,7 +74,8 @@ class UnaryOperator:
             assert type(res) is Value
             L.stack[idx] = res
         else:
-            raise TypeError("arithmetic error")
+            va = L.get_rk(a)
+            raise TypeError(f"attempt to perform arithmetic on {va.type_name()}")
 
 
 class BinaryOperator:
@@ -109,7 +110,9 @@ class BinaryOperator:
         if type(res) is Value:
             L.stack[idx] = res
         else:
-            raise TypeError("arithmetic error")
+            va = L.stack[a]
+            vb = L.stack[b]
+            raise TypeError(f"attempt to perform arithmetic on {va.type_name()} and {vb.type_name()}")
 
     def compare(self, L: LuaState, a: int, b: int) -> bool:
         res = self.solve(L, a, b)

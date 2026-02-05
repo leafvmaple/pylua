@@ -56,6 +56,8 @@ class LuaState:
         self.register("pcall", BUILTIN.lua_pcall)
 
     def get_global(self, name: str) -> Value:
+        if not isinstance(name, str):
+            raise TypeError(f"name must be a string, got {type(name)}")
         key = Value.string(name)
         value = self.globals.get(key)
         return value if value is not None else Value.nil()
@@ -184,7 +186,7 @@ class LuaState:
                 assert type(func_value.value) is LClosure
                 self.stack[idx] = self.lua_call(func_value.value, *self.stack[idx: idx + nargs + 1])
         else:
-            raise TypeError("CALL error")
+            raise TypeError(f"attempt to call a {func_value.type_name()} value")
 
     def pcall(self, idx: int, nargs: int, num_rets: int) -> int:
         ci_len = len(self.call_info)

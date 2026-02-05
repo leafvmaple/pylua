@@ -5,17 +5,18 @@ import argparse
 import sys
 from pathlib import Path
 
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
-
 from binary.io import Reader
 from binary.reader import read_header, read_proto
+from binary.writer import write_bytecode
 from binary.header import Header
 from structs.function import Proto
 from parser.lexer import Lexer
 from parser.block import Parser
 from vm.state import LuaState
 from vm.lua_vm import LuaVM
+
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root))
 
 
 class PyLua:
@@ -50,6 +51,11 @@ def compile_lua(source_file: str, output_file: str | None = None,
     Returns:
         Proto object if successful, None otherwise
     """
+    # 类型检查
+    if not isinstance(source_file, str):
+        raise TypeError(f"source_file must be a string, got {type(source_file)}")
+    if output_file is not None and not isinstance(output_file, str):
+        raise TypeError(f"output_file must be a string or None, got {type(output_file)}")
     try:
         lexer = Lexer.from_file(source_file)
         parser = Parser.from_lexer(lexer)
@@ -65,9 +71,9 @@ def compile_lua(source_file: str, output_file: str | None = None,
             print(f"\nmain <{source_file}:0,0> ({len(proto.codes)} instructions)")
             print(info)
         
-        # TODO: Implement bytecode serialization to output_file
-        # if output_file:
-        #     write_bytecode(proto, output_file)
+        # Write bytecode to output file if specified
+        if output_file:
+            write_bytecode(proto, output_file)
         
         return proto
     except Exception as e:
@@ -92,6 +98,15 @@ def execute_lua(source_file: str | None = None, bytecode_file: str | None = None
     Returns:
         Exit code (0 for success, non-zero for error)
     """
+    # 类型检查
+    if source_file is not None and not isinstance(source_file, str):
+        raise TypeError(f"source_file must be a string or None, got {type(source_file)}")
+    if bytecode_file is not None and not isinstance(bytecode_file, str):
+        raise TypeError(f"bytecode_file must be a string or None, got {type(bytecode_file)}")
+    if args is not None and not isinstance(args, list):
+        raise TypeError(f"args must be a list or None, got {type(args)}")
+    if execute_string is not None and not isinstance(execute_string, str):
+        raise TypeError(f"execute_string must be a string or None, got {type(execute_string)}")
     if version:
         print("PyLua 0.1.0 -- A Lua implementation in Python")
         print("Copyright (C) 2024")
@@ -147,7 +162,11 @@ def execute_lua(source_file: str | None = None, bytecode_file: str | None = None
 
 
 def run_interactive() -> int:
-    """Run an interactive Lua REPL."""
+    """Run an interactive Lua REPL.
+    
+    Returns:
+        Exit code (0 for success)
+    """
     print("PyLua 0.1.0 -- A Lua implementation in Python")
     print("Copyright (C) 2024")
     print('Type "exit()" or Ctrl+C to quit.')
