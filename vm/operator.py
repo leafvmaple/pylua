@@ -16,10 +16,7 @@ if TYPE_CHECKING:
 class CheckNumber(LuaCheckable):
     @staticmethod
     def check(val: Value) -> bool:
-        val.conv_str_to_number()
-        if val.is_number():
-            return True
-        return False
+        return val.conv_str_to_number()
 
     @staticmethod
     def checks(va: Value, vb: Value) -> bool:
@@ -116,9 +113,8 @@ class BinaryOperator:
 
     def compare(self, L: LuaState, a: int, b: int) -> bool:
         res = self.solve(L, a, b)
-        if type(res) is Value and res.is_boolean():
-            assert type(res.value) is bool
-            return res.value
+        if type(res) is Value:
+            return bool(res.value)
         return False
 
 
@@ -207,6 +203,8 @@ class Operator:
         closure = state.call_info[-1]
         if b < len(closure.upvalues):
             closure.upvalues[b] = state.stack[a]
+        else:
+            raise IndexError(f"upvalue index {b} out of range (max {len(closure.upvalues)})")
 
     @staticmethod
     def SETTABLE(inst: Instruction, state: LuaState):
@@ -215,8 +213,17 @@ class Operator:
         key = state.get_rk(b)
         value = state.get_rk(c)
         if table_value.is_table():
-            assert type(table_value.value) is Table
+            assert isinstance(table_value.value, Table)
             table_value.value.set(key, value)
+        else:
+            # Try __newindex metamethod
+            mt = table_value.get_metatable()
+            if mt:
+                newindex = mt.get(Value.string("__newindex"))
+                if newindex and newindex.is_function():
+                    state.lua_call(newindex.value, table_value, key, value)
+                    return
+            raise TypeError(f"attempt to index a {table_value.type_name()} value")
 
     @staticmethod
     def NEWTABLE(inst: Instruction, state: LuaState):
@@ -232,34 +239,33 @@ class Operator:
         state.stack[a] = result
 
     @staticmethod
-    def ADD(inst: Instruction, state: LuaState):
+    def _arith_op(name: str, inst: Instruction, state: LuaState):
         a, b, c = inst.abc()
-        BINARY_ARITH["ADD"].arith(state, a, b, c)
+        BINARY_ARITH[name].arith(state, a, b, c)
+
+    @staticmethod
+    def ADD(inst: Instruction, state: LuaState):
+        Operator._arith_op("ADD", inst, state)
 
     @staticmethod
     def SUB(inst: Instruction, state: LuaState):
-        a, b, c = inst.abc()
-        BINARY_ARITH["SUB"].arith(state, a, b, c)
+        Operator._arith_op("SUB", inst, state)
 
     @staticmethod
     def MUL(inst: Instruction, state: LuaState):
-        a, b, c = inst.abc()
-        BINARY_ARITH["MUL"].arith(state, a, b, c)
+        Operator._arith_op("MUL", inst, state)
 
     @staticmethod
     def DIV(inst: Instruction, state: LuaState):
-        a, b, c = inst.abc()
-        BINARY_ARITH["DIV"].arith(state, a, b, c)
+        Operator._arith_op("DIV", inst, state)
 
     @staticmethod
     def MOD(inst: Instruction, state: LuaState):
-        a, b, c = inst.abc()
-        BINARY_ARITH["MOD"].arith(state, a, b, c)
+        Operator._arith_op("MOD", inst, state)
 
     @staticmethod
     def POW(inst: Instruction, state: LuaState):
-        a, b, c = inst.abc()
-        BINARY_ARITH["POW"].arith(state, a, b, c)
+        Operator._arith_op("POW", inst, state)
 
     @staticmethod
     def UNM(inst: Instruction, state: LuaState):
@@ -279,14 +285,13 @@ class Operator:
     @staticmethod
     def CONCAT(inst: Instruction, state: LuaState):
         a, b, c = inst.abc()
-        result = ""
+        parts: list[str] = []
         for i in range(b, c + 1):
             val = state.stack[i]
-            val.conv_number_to_str()
-            if val.is_string():
-                assert type(val.value) is str
-                result += val.value
-        state.stack[a] = Value.string(result)
+            s = val.get_string()
+            if s is not None:
+                parts.append(s)
+        state.stack[a] = Value.string(''.join(parts))
 
     @staticmethod
     def JMP(inst: Instruction, state: LuaState):
@@ -294,37 +299,27 @@ class Operator:
         state.jump(sbx)
 
     @staticmethod
-    def EQ(inst: Instruction, state: LuaState):
+    def _compare_op(name: str, inst: Instruction, state: LuaState):
         a, b, c = inst.abc()
-        if BINARY_ARITH["EQ"].compare(state, b, c) == (a != 0):
+        if BINARY_ARITH[name].compare(state, b, c) == (a != 0):
             next_inst = state.fetch()
             assert type(next_inst) is Instruction and next_inst.op_name() == "JMP"
             Operator.JMP(next_inst, state)
         else:
             assert type(state.call_info[-1]) is LClosure
             state.call_info[-1].pc += 1
+
+    @staticmethod
+    def EQ(inst: Instruction, state: LuaState):
+        Operator._compare_op("EQ", inst, state)
 
     @staticmethod
     def LT(inst: Instruction, state: LuaState):
-        a, b, c = inst.abc()
-        if BINARY_ARITH["LT"].compare(state, b, c) == (a != 0):
-            next_inst = state.fetch()
-            assert type(next_inst) is Instruction and next_inst.op_name() == "JMP"
-            Operator.JMP(next_inst, state)
-        else:
-            assert type(state.call_info[-1]) is LClosure
-            state.call_info[-1].pc += 1
+        Operator._compare_op("LT", inst, state)
 
     @staticmethod
     def LE(inst: Instruction, state: LuaState):
-        a, b, c = inst.abc()
-        if BINARY_ARITH["LE"].compare(state, b, c) == (a != 0):
-            next_inst = state.fetch()
-            assert type(next_inst) is Instruction and next_inst.op_name() == "JMP"
-            Operator.JMP(next_inst, state)
-        else:
-            assert type(state.call_info[-1]) is LClosure
-            state.call_info[-1].pc += 1
+        Operator._compare_op("LE", inst, state)
 
     @staticmethod
     def TEST(inst: Instruction, state: LuaState):
@@ -366,25 +361,26 @@ class Operator:
         a, sbx = inst.asbx()
         step = state.stack[a + 2]
         idx = state.stack[a]
-        assert type(idx.value) is int
-        assert type(step.value) is int
-        idx.value += step.value
+        assert isinstance(idx.value, (int, float))
+        assert isinstance(step.value, (int, float))
+        new_idx = Value.number(idx.value + step.value)
+        state.stack[a] = new_idx
         limit = state.stack[a + 1]
-        assert type(limit.value) is int
+        assert isinstance(limit.value, (int, float))
 
-        if (step.value > 0 and idx.value <= limit.value) or \
-           (step.value <= 0 and idx.value >= limit.value):
+        if (step.value > 0 and new_idx.value <= limit.value) or \
+           (step.value <= 0 and new_idx.value >= limit.value):
             state.jump(sbx)
-            state.stack[a + 3] = idx
+            state.stack[a + 3] = new_idx
 
     @staticmethod
     def FORPREP(inst: Instruction, state: LuaState):
         a, sbx = inst.asbx()
         init = state.stack[a]
         step = state.stack[a + 2]
-        assert type(init.value) is int
-        assert type(step.value) is int
-        init.value -= step.value
+        assert isinstance(init.value, (int, float))
+        assert isinstance(step.value, (int, float))
+        state.stack[a] = Value.number(init.value - step.value)
         state.jump(sbx)
 
     @staticmethod
@@ -435,3 +431,11 @@ class Operator:
                 state.stack[a + i] = closure.varargs[i]
             else:
                 state.stack[a + i] = Value.nil()
+
+
+# Pre-built dispatch table for O(1) opcode lookup instead of getattr
+DISPATCH_TABLE: dict[str, Callable] = {
+    name: getattr(Operator, name)
+    for name in dir(Operator)
+    if not name.startswith('_') and callable(getattr(Operator, name))
+}

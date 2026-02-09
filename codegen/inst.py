@@ -166,10 +166,6 @@ class CodegenInst:
         info.emit_abc(OP['TESTSET'], a, b, c)
 
     @staticmethod
-    def test_set(info: FuncInfo, a: int, b: int, c: int):
-        info.emit_abc(OP['TESTSET'], a, b, c)
-
-    @staticmethod
     def forprep(info: FuncInfo, a: int, sbx: int):
         info.emit_asbx(OP['FORPREP'], a, sbx)
 
@@ -232,18 +228,18 @@ class CodegenInst:
 
     @staticmethod
     def GT(info: FuncInfo, a: int, b: int, c: int):
-        # GT is implemented as NOT (LE)
-        info.emit_abc(OP['LE'], 0, c, b)
+        # GT(a, B, C) ≡ LT(a, C, B): B > C ⟺ C < B
+        info.emit_abc(OP['LT'], a, c, b)
 
     @staticmethod
     def GE(info: FuncInfo, a: int, b: int, c: int):
-        # GE is implemented as NOT (LT)
-        info.emit_abc(OP['LT'], 0, c, b)
+        # GE(a, B, C) ≡ LE(a, C, B): B >= C ⟺ C <= B
+        info.emit_abc(OP['LE'], a, c, b)
 
     @staticmethod
     def NE(info: FuncInfo, a: int, b: int, c: int):
-        # NE is implemented as NOT (EQ)
-        info.emit_abc(OP['EQ'], 0, b, c)
+        # NE(a, B, C) ≡ EQ(1-a, B, C): invert a
+        info.emit_abc(OP['EQ'], 1 - a, b, c)
 
     @staticmethod
     def close(info: FuncInfo, a: int):

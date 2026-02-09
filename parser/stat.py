@@ -289,8 +289,8 @@ class IfStmt(Stmt):
         jmp_to_ends: list[int] = []
 
         for i in range(len(self.exps)):
-            # Evaluate condition (skip for else clause with TrueExp)
-            if i < len(self.exps) - 1 or type(self.exps[i]).__name__ != 'TrueExp':
+            # Evaluate condition (skip for else clause with TrueExpr)
+            if not isinstance(self.exps[i], TrueExpr):
                 cond_reg = info.alloc_reg()
                 self.exps[i].codegen(info, cond_reg)
 

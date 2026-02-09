@@ -13,10 +13,6 @@ from structs.function import Proto
 from parser.lexer import Lexer
 from parser.block import Parser
 from vm.state import LuaState
-from vm.lua_vm import LuaVM
-
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
 
 
 class PyLua:
@@ -33,6 +29,37 @@ class PyLua:
 
     def __str__(self) -> str:
         return f"{self.main}"
+
+
+def compile_from_source(source: str, name: str = "<string>") -> Proto:
+    """Compile Lua source code string to Proto.
+    
+    Args:
+        source: Lua source code string
+        name: Name for error messages
+    
+    Returns:
+        Proto object
+    """
+    lexer = Lexer.from_string(source, name)
+    parser = Parser.from_lexer(lexer)
+    info = parser.to_info()
+    return info.to_proto()
+
+
+def compile_from_file(filepath: str) -> Proto:
+    """Compile a Lua source file to Proto.
+    
+    Args:
+        filepath: Path to .lua source file
+    
+    Returns:
+        Proto object
+    """
+    lexer = Lexer.from_file(filepath)
+    parser = Parser.from_lexer(lexer)
+    info = parser.to_info()
+    return info.to_proto()
 
 
 def compile_lua(source_file: str, output_file: str | None = None, 
@@ -118,20 +145,14 @@ def execute_lua(source_file: str | None = None, bytecode_file: str | None = None
         
         if execute_string:
             # Execute string directly
-            lexer = Lexer.from_string(execute_string)
-            parser = Parser.from_lexer(lexer)
-            info = parser.to_info()
-            proto = info.to_proto()
+            proto = compile_from_source(execute_string, "<string>")
         elif bytecode_file:
             # Load precompiled bytecode
             pylua = PyLua(bytecode_file)
             proto = pylua.main
         elif source_file:
             # Compile and execute source file
-            lexer = Lexer.from_file(source_file)
-            parser = Parser.from_lexer(lexer)
-            info = parser.to_info()
-            proto = info.to_proto()
+            proto = compile_from_file(source_file)
         else:
             # Interactive mode or stdin
             if interactive or sys.stdin.isatty():
@@ -139,18 +160,14 @@ def execute_lua(source_file: str | None = None, bytecode_file: str | None = None
             else:
                 # Read from stdin
                 source = sys.stdin.read()
-                lexer = Lexer.from_string(source)
-                parser = Parser.from_lexer(lexer)
-                info = parser.to_info()
-                proto = info.to_proto()
+                proto = compile_from_source(source, "<stdin>")
         
         if proto:
             # Set up arguments (arg table)
             state = LuaState(proto)
             
             # Run the VM
-            while LuaVM.execute(state):
-                pass
+            state.run()
         
         if interactive:
             return run_interactive()
@@ -180,14 +197,10 @@ def run_interactive() -> int:
                 continue
             
             # Try to execute the line
-            lexer = Lexer.from_string(line)
-            parser = Parser.from_lexer(lexer)
-            info = parser.to_info()
-            proto = info.to_proto()
+            proto = compile_from_source(line, "<stdin>")
             
             state = LuaState(proto)
-            while LuaVM.execute(state):
-                pass
+            state.run()
                 
         except KeyboardInterrupt:
             print("\nInterrupted")

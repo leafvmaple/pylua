@@ -97,7 +97,7 @@ def write_bytecode(proto: Proto, output_file: str) -> None:
     # Create a default header
     header = Header()
     header.signature = b'\x1bLua'
-    header.version = 0x53  # Lua 5.3
+    header.version = 0x51  # Lua 5.1 (matches our opcodes)
     header.format = 0
     header.endianness = 1  # Little endian
     header.int_len = 4

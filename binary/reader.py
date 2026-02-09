@@ -14,6 +14,9 @@ def read_header(file: Reader) -> Header:
     if header.signature != b'\x1bLua':
         raise ValueError("Not a valid Lua bytecode file")
     header.version = file.read_uint8()
+    if header.version not in Header.SUPPORTED_VERSIONS:
+        version_str = f"{header.version >> 4}.{header.version & 0xF}"
+        raise ValueError(f"Unsupported Lua version: {version_str} (expected 5.1)")
     header.format = file.read_uint8()
     header.endianness = file.read_uint8()
     header.int_len = file.read_uint8()

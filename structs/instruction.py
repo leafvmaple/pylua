@@ -82,18 +82,16 @@ class Instruction:
                 self._a, self._sbx = bitset_to_asbx(instruction)
         else:
             assert code_idx is not None and a is not None, "Must provide code_idx and a when instruction is None"
+            self._opcode_idx = code_idx
             self._opcode = OPCODES[self._opcode_idx]
             if b is not None and c is not None:
-                self._opcode_idx = code_idx
                 self._a = a
                 self._b = b
                 self._c = c
             elif bx is not None:
-                self._opcode_idx = code_idx
                 self._a = a
                 self._bx = bx
             elif sbx is not None:
-                self._opcode_idx = code_idx
                 self._a = a
                 self._sbx = sbx
 

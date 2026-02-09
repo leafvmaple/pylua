@@ -39,10 +39,10 @@ class TestBasic(unittest.TestCase):
         """Test arithmetic operations."""
         # Create a temporary Lua file with arithmetic operations
         with tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False) as f:
-            f.write('print(1 + 2)')
-            f.write('print(5 - 3)')
-            f.write('print(2 * 4)')
-            f.write('print(10 / 2)')
+            f.write('print(1 + 2)\n')
+            f.write('print(5 - 3)\n')
+            f.write('print(2 * 4)\n')
+            f.write('print(10 / 2)\n')
             lua_file = f.name
         
         try:
@@ -55,9 +55,9 @@ class TestBasic(unittest.TestCase):
     def test_if_statement(self):
         """Test if statements."""
         with tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False) as f:
-            f.write('if 1 > 0 then')
-            f.write('    print("1 is greater than 0")')
-            f.write('end')
+            f.write('if 1 > 0 then\n')
+            f.write('    print("1 is greater than 0")\n')
+            f.write('end\n')
             lua_file = f.name
         
         try:

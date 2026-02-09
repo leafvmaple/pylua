@@ -70,6 +70,7 @@ class FuncInfo:
         self.upval_names = {}
         self.insts = []
         self.constants = []
+        self._const_index: dict[Const, int] = {}  # O(1) constant lookup
         self.used_regs = 0
         self.max_regs = 0
 
@@ -98,11 +99,13 @@ class FuncInfo:
 
     def idx_of_const(self, const: Const) -> int:
         """Get index of constant, adding it if not present."""
-        if const in self.constants:
-            return self.constants.index(const)
-        else:
-            self.constants.append(const)
-            return len(self.constants) - 1
+        idx = self._const_index.get(const)
+        if idx is not None:
+            return idx
+        idx = len(self.constants)
+        self.constants.append(const)
+        self._const_index[const] = idx
+        return idx
 
     def idx_of_upval(self, name: str) -> int | None:
         """Get index of upvalue, adding it if not present."""
@@ -125,7 +128,8 @@ class FuncInfo:
         return None
 
     def alloc_reg(self) -> int:
-        assert self.used_regs < 255, "Exceeded maximum register limit"
+        if self.used_regs >= 255:
+            raise RuntimeError("Exceeded maximum register limit (255)")
         self.used_regs += 1
         self.max_regs = max(self.max_regs, self.used_regs)
         return self.used_regs - 1

@@ -325,18 +325,45 @@ class Lexer:
         quote = self.peek_char()
         self.advance_char()  # skip opening quote
 
-        start_pos = self._chunk_pos
+        parts: list[str] = []
 
         # Scan until closing quote or EOF
         while not self.is_eof() and self.peek_char() != quote:
             if self.peek_char() == '\\':
                 self.advance_char()  # skip backslash
                 if not self.is_eof():
-                    self.advance_char()  # skip escaped character
+                    esc = self.peek_char()
+                    self.advance_char()
+                    escape_map = {
+                        'n': '\n', 't': '\t', 'r': '\r',
+                        'a': '\a', 'b': '\b', 'f': '\f',
+                        'v': '\v', '\\': '\\', "'": "'",
+                        '"': '"', '0': '\0',
+                    }
+                    if esc in escape_map:
+                        parts.append(escape_map[esc])
+                    elif esc == '\n':
+                        self._line += 1
+                        parts.append('\n')
+                    elif esc.isdigit():
+                        # Decimal escape \ddd (up to 3 digits)
+                        digits = esc
+                        for _ in range(2):
+                            if not self.is_eof() and self.peek_char().isdigit():
+                                digits += self.peek_char()
+                                self.advance_char()
+                            else:
+                                break
+                        parts.append(chr(int(digits)))
+                    else:
+                        # Unknown escape, keep as-is
+                        parts.append('\\')
+                        parts.append(esc)
             else:
+                parts.append(self.peek_char())
                 self.advance_char()
 
-        value = self.chunk[start_pos:self._chunk_pos]
+        value = ''.join(parts)
 
         if not self.is_eof():
             self.advance_char()  # skip closing quote
@@ -344,14 +371,63 @@ class Lexer:
         return Token("STRING", value, self._line)
 
     def read_comment(self) -> Token:
+        # Check for block comment --[[ ... ]]
+        if not self.is_eof() and self.peek_char() == '[':
+            level = self._check_long_bracket()
+            if level >= 0:
+                self._scan_long_string(level)
+                return Token("COMMENT", "", self._line)
+
         start_pos = self._chunk_pos
 
-        # Consume all characters until newline
+        # Single-line comment: consume until newline
         while not self.is_eof() and self.peek_char() != '\n':
             self.advance_char()
 
         value = self.chunk[start_pos:self._chunk_pos]
         return Token("COMMENT", value, self._line)
+
+    def _check_long_bracket(self) -> int:
+        """Check for long bracket [=*[ and return level (-1 if not found)."""
+        saved_pos = self._chunk_pos
+        if self.is_eof() or self.peek_char() != '[':
+            return -1
+        self.advance_char()  # skip first '['
+        level = 0
+        while not self.is_eof() and self.peek_char() == '=':
+            level += 1
+            self.advance_char()
+        if not self.is_eof() and self.peek_char() == '[':
+            self.advance_char()  # skip second '['
+            return level
+        # Not a long bracket, restore position
+        self._chunk_pos = saved_pos
+        return -1
+
+    def _scan_long_string(self, level: int) -> str:
+        """Scan a long string/comment with the given bracket level."""
+        parts: list[str] = []
+        closing = ']' + '=' * level + ']'
+        while not self.is_eof():
+            if self.peek_char() == '\n':
+                self._line += 1
+            if self.chunk[self._chunk_pos:self._chunk_pos + len(closing)] == closing:
+                self._chunk_pos += len(closing)
+                return ''.join(parts)
+            parts.append(self.peek_char())
+            self.advance_char()
+        raise SyntaxError(f"unfinished long string/comment near line {self._line}")
+
+    def read_long_string(self) -> Token:
+        """Read a long string [[ ... ]] or [=[ ... ]=]."""
+        level = self._check_long_bracket()
+        if level < 0:
+            raise SyntaxError(f"invalid long string near line {self._line}")
+        value = self._scan_long_string(level)
+        # Skip leading newline per Lua spec
+        if value.startswith('\n'):
+            value = value[1:]
+        return Token("STRING", value, self._line)
 
     def skip_whitespace(self) -> None:
         while not self.is_eof():

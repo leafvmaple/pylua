@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Optional, TYPE_CHECKING
-from vm.operator import Operator
+from vm.operator import Operator, DISPATCH_TABLE
 from structs.instruction import Instruction
 from structs.value import Value
 from structs.table import Table
@@ -47,11 +47,21 @@ class LuaState:
 
         # Register built-in functions
         self.register("print", BUILTIN.lua_print)
+        self.register("type", BUILTIN.lua_type)
+        self.register("tostring", BUILTIN.lua_tostring)
+        self.register("tonumber", BUILTIN.lua_tonumber)
+        self.register("assert", BUILTIN.lua_assert)
         self.register("getmetatable", BUILTIN.lua_getmetatable)
         self.register("setmetatable", BUILTIN.lua_setmetatable)
+        self.register("rawequal", BUILTIN.lua_rawequal)
+        self.register("rawget", BUILTIN.lua_rawget)
+        self.register("rawset", BUILTIN.lua_rawset)
+        self.register("rawlen", BUILTIN.lua_rawlen)
         self.register("next", BUILTIN.lua_next)
         self.register("ipairs", BUILTIN.lua_ipairs)
         self.register("pairs", BUILTIN.lua_pairs)
+        self.register("select", BUILTIN.lua_select)
+        self.register("unpack", BUILTIN.lua_unpack)
         self.register("error", BUILTIN.lua_error)
         self.register("pcall", BUILTIN.lua_pcall)
 
@@ -190,11 +200,16 @@ class LuaState:
 
     def pcall(self, idx: int, nargs: int, num_rets: int) -> int:
         ci_len = len(self.call_info)
+        saved_stack = self.stack[:]
+        saved_func = self.func
         try:
             self.call(idx, nargs, num_rets)
         except Exception as e:
             while len(self.call_info) > ci_len:
                 self.pop_closure()
+            # Restore to saved state instead of clearing
+            self.stack = saved_stack
+            self.func = saved_func
             self.stack.clear()
             self.pushvalue(Value.string(str(e)))
             if isinstance(e, RuntimeError):
@@ -211,19 +226,30 @@ class LuaState:
         value = self.stack[-1]
         raise RuntimeError(value.value)
 
+    def run(self):
+        """Top-level execution loop. Runs until all instructions are consumed."""
+        while True:
+            inst = self.fetch()
+            if inst is None:
+                break
+            op_name = inst.op_name()
+            method = DISPATCH_TABLE.get(op_name)
+            if method:
+                method(inst, self)
+            else:
+                raise RuntimeError(f"unknown opcode: {op_name}")
+
     def execute(self) -> bool:
+        """Execute a single instruction. Used for nested calls (stops on RETURN)."""
         inst = self.fetch()
         if inst is None:
             return False
         op_name = inst.op_name()
-        method = getattr(Operator, op_name, None)
+        method = DISPATCH_TABLE.get(op_name)
         if method:
-            # print(f"-{len(self.call_info)}- " + str(inst).ljust(40))
             method(inst, self)
-            # print(
-            #     f"-{len(self.call_info)}- "
-            #     + ''.join(f"[{v}]" for v in self.stack)
-            # )
+        else:
+            raise RuntimeError(f"unknown opcode: {op_name}")
         if op_name == "RETURN":
             return False
         return True

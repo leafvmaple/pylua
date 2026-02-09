@@ -23,22 +23,40 @@ class LUA_TYPE(Enum):
     THREAD = 8
 
 
+# Sentinel for uninitialized singleton cache
+_UNSET = object()
+
+
 class Value:
     value: LuaValue
 
+    # Singleton caches for frequently created immutable values
+    _NIL: Value | None = None
+    _TRUE: Value | None = None
+    _FALSE: Value | None = None
+
     def __init__(self, value: LuaValue):
         self.value = value
-        self.conv_float_to_int()
+        self._conv_float_to_int()
 
     @classmethod
     def nil(cls) -> Value:
-        """Create a nil value"""
-        return cls(None)
+        """Create a nil value (cached singleton)"""
+        if cls._NIL is None:
+            cls._NIL = cls(None)
+        return cls._NIL
 
     @classmethod
     def boolean(cls, val: bool) -> Value:
-        """Create a boolean value"""
-        return cls(val)
+        """Create a boolean value (cached singletons for True/False)"""
+        if val:
+            if cls._TRUE is None:
+                cls._TRUE = cls(True)
+            return cls._TRUE
+        else:
+            if cls._FALSE is None:
+                cls._FALSE = cls(False)
+            return cls._FALSE
 
     @classmethod
     def number(cls, val: int | float) -> Value:
@@ -60,18 +78,48 @@ class Value:
         """Create a closure value"""
         return cls(val)
 
+    def to_number_str(self) -> Value:
+        """Return a new Value with number converted to string."""
+        if self.is_number():
+            return Value.string(str(self.value))
+        return self
+
+    def to_str_number(self) -> Value | None:
+        """Return a new Value with string converted to number, or None if not convertible."""
+        if self.is_string():
+            assert isinstance(self.value, str)
+            try:
+                num = float(self.value)
+                if num.is_integer():
+                    return Value.number(int(num))
+                return Value.number(num)
+            except (ValueError, OverflowError):
+                return None
+        if self.is_number():
+            return self
+        return None
+
+    # Keep backward-compatible in-place methods (used by CheckNumber)
     def conv_number_to_str(self):
         if self.is_number():
             self.value = str(self.value)
 
-    def conv_str_to_number(self):
+    def conv_str_to_number(self) -> bool:
+        """Try to convert string value to number in-place. Returns True on success."""
+        if self.is_number():
+            return True
         if self.is_string():
-            assert type(self.value) is str
-            self.value = float(self.value)
-            self.conv_float_to_int()
+            assert isinstance(self.value, str)
+            try:
+                self.value = float(self.value)
+                self._conv_float_to_int()
+                return True
+            except (ValueError, OverflowError):
+                return False
+        return False
 
-    def conv_float_to_int(self):
-        if type(self.value) is float and self.value.is_integer():
+    def _conv_float_to_int(self):
+        if isinstance(self.value, float) and self.value.is_integer():
             self.value = int(self.value)
 
     def is_nil(self) -> bool:
@@ -81,16 +129,16 @@ class Value:
         return type(self.value) is bool
 
     def is_number(self) -> bool:
-        return type(self.value) in (int, float)
+        return isinstance(self.value, (int, float)) and not isinstance(self.value, bool)
 
     def is_string(self) -> bool:
-        return type(self.value) is str
+        return isinstance(self.value, str)
 
     def is_table(self) -> bool:
-        return type(self.value) is Table
+        return isinstance(self.value, Table)
 
     def is_function(self) -> bool:
-        return type(self.value) in (LClosure, PClosure)
+        return isinstance(self.value, (LClosure, PClosure))
 
     def is_userdata(self) -> bool:
         return False  # Placeholder for userdata type
@@ -142,14 +190,15 @@ class Value:
 
     def gettable(self, key: Value, caller: LuaCallable | None = None) -> Value | None:
         if self.is_table():
-            assert type(self.value) is Table
+            assert isinstance(self.value, Table)
             return self.value.gettable(key)
 
         mt = self.get_metatable()
         index = mt.get(Value.string("__index")) if mt else None
         if index:
             if index.is_function():
-                assert caller is LuaCallable, "__index meta method requires a caller"
+                if caller is None:
+                    raise RuntimeError("__index meta method requires a caller")
                 return caller(index.value, self, key)
             if index.is_table():
                 return index.gettable(key, caller)
@@ -159,7 +208,8 @@ class Value:
         mt = self.get_metatable()
         length = mt.get(Value.string("__len")) if mt else None
         if length and length.is_function():
-            assert caller is LuaCallable, "__index meta method requires a caller"
+            if caller is None:
+                raise RuntimeError("__len meta method requires a caller")
             result = caller(length.value, self)
             int_result = result.get_integer()
             return int_result if int_result is not None else 0

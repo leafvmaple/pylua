@@ -35,7 +35,6 @@
 │  └─ value.py
 ├─ vm/                # 虚拟机实现
 │  ├─ builtins.py
-│  ├─ lua_vm.py
 │  ├─ operator.py
 │  ├─ protocols.py
 │  └─ state.py

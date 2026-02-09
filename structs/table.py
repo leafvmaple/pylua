@@ -6,6 +6,18 @@ if TYPE_CHECKING:
     from structs.value import Value
 
 
+def _make_value(v) -> Value:
+    """Lazy import helper to create Value at runtime."""
+    from structs.value import Value
+    return Value(v)
+
+
+def _make_number_value(v) -> Value:
+    """Lazy import helper to create Value.number at runtime."""
+    from structs.value import Value
+    return Value.number(v)
+
+
 class Table:
     _metatable: Table | None = None
     _list: list[Value]
@@ -49,10 +61,10 @@ class Table:
     def next(self, key: Value) -> tuple[Value, Value] | None:
         if key.is_nil():
             if len(self._list) > 0:
-                return Value(1), self._list[0]
+                return _make_value(1), self._list[0]
             for k in self._map:
                 if isinstance(k, int):
-                    k = Value.number(k)
+                    return _make_number_value(k), self._map[k]
                 return k, self._map[k]
             return None
 
@@ -63,7 +75,7 @@ class Table:
 
     def _list_next(self, key: int) -> tuple[Value, Value] | None:
         if key < len(self._list):
-            return Value(key + 1), self._list[key]
+            return _make_value(key + 1), self._list[key]
         return None
 
     def _map_next(self, key: Value | int) -> tuple[Value, Value] | None:
@@ -71,7 +83,7 @@ class Table:
         for k in self._map:
             if found:
                 if isinstance(k, int):
-                    k = Value.number(k)
+                    return _make_number_value(k), self._map[k]
                 return k, self._map[k]
             if k == key:
                 found = True

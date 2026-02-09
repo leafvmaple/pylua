@@ -353,9 +353,9 @@ class BinaryOpExpr(Expr):
         elif self.op in ('AND', 'OR'):
             self.left.codegen(info, reg)
             if self.op == 'AND':
-                CodegenInst.test_set(info, reg, reg, 0)  # Jump if false
+                CodegenInst.testset(info, reg, reg, 0)  # Jump if false
             else:  # OR
-                CodegenInst.test_set(info, reg, reg, 1)  # Jump if true
+                CodegenInst.testset(info, reg, reg, 1)  # Jump if true
 
             right_reg = info.alloc_reg()
             self.right.codegen(info, right_reg)
@@ -461,23 +461,41 @@ class TableConstructorExpr(Expr):
                 val_exps.append(exp)
 
     def codegen(self, info: FuncInfo, reg: int, cnt: int = 1):
-        CodegenInst.new_table(info, reg, 0, 0)
-
+        # Separate array-style (key is None) and hash-style entries
+        array_vals: list[Expr] = []
+        hash_keys: list[Expr] = []
+        hash_vals: list[Expr] = []
         for key, val in zip(self.key_exps, self.val_exps):
-            if key:
-                key_reg = info.alloc_reg()
-                key.codegen(info, key_reg)
+            if key is None:
+                array_vals.append(val)
             else:
-                key_reg = 0  # Indicate array-style insertion
+                hash_keys.append(key)
+                hash_vals.append(val)
 
+        CodegenInst.new_table(info, reg, len(array_vals), len(hash_keys))
+
+        # Emit hash-style entries with SETTABLE
+        for key, val in zip(hash_keys, hash_vals):
+            key_reg = info.alloc_reg()
+            key.codegen(info, key_reg)
             val_reg = info.alloc_reg()
             val.codegen(info, val_reg)
-
             CodegenInst.set_table(info, reg, key_reg, val_reg)
+            info.free_regs(2)
 
-            if key:
-                info.free_reg()
-            info.free_reg()
+        # Emit array-style entries with SETLIST (batches of 50)
+        LFIELDS_PER_FLUSH = 50
+        for batch_start in range(0, len(array_vals), LFIELDS_PER_FLUSH):
+            batch = array_vals[batch_start:batch_start + LFIELDS_PER_FLUSH]
+            # SETLIST expects values in reg+1..reg+n, so force allocation there
+            saved_used = info.used_regs
+            info.used_regs = reg + 1
+            batch_regs = info.alloc_regs(len(batch))
+            for i, val in enumerate(batch):
+                val.codegen(info, batch_regs + i)
+            block = batch_start // LFIELDS_PER_FLUSH + 1  # 1-based block number
+            CodegenInst.set_list(info, reg, len(batch), block)
+            info.used_regs = saved_used
 
 
 class TableAccessExpr(Expr):
@@ -498,12 +516,14 @@ class TableAccessExpr(Expr):
     @classmethod
     def parse_dot(cls, lexer: Lexer, prefix_expr: Expr) -> TableAccessExpr:
         lexer.consume("DOT")
-        return cls(prefix_expr, NameExpr.parse(lexer))
+        name = NameExpr.parse(lexer)
+        return cls(prefix_expr, StringExpr(name.name))
 
     @classmethod
     def parse_colon(cls, lexer: Lexer, prefix_expr: Expr) -> TableAccessExpr:
         lexer.consume("COLON")
-        return cls(prefix_expr, NameExpr.parse(lexer))
+        name = NameExpr.parse(lexer)
+        return cls(prefix_expr, StringExpr(name.name))
 
     def codegen(self, info: FuncInfo, reg: int, cnt: int = 1):
         prefix_reg = info.alloc_reg()
