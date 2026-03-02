@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 from typing import TYPE_CHECKING
-from codegen.inst import OpCode, OPCODES, iABC, iABx, iAsBx, OpArgN, OpArgK
+
+from codegen.inst import OPCODES, OpArgK, OpArgN, OpCode, OpMode
 
 if TYPE_CHECKING:
     from structs.value import Value
@@ -63,25 +65,32 @@ class Instruction:
 
     bias = 131071  # 2^18 - 1
 
-    def __init__(self, instruction: int | None = None,
-                 code_idx: int | None = None, a: int | None = None,
-                 b: int | None = None, c: int | None = None,
-                 bx: int | None = None,
-                 sbx: int | None = None):
+    def __init__(
+        self,
+        instruction: int | None = None,
+        code_idx: int | None = None,
+        a: int | None = None,
+        b: int | None = None,
+        c: int | None = None,
+        bx: int | None = None,
+        sbx: int | None = None,
+    ):
         self._args = []
         self._comment = []
 
         if instruction is not None:
             self._opcode_idx = instruction & 0x3F
             self._opcode = OPCODES[self._opcode_idx]
-            if self._opcode.mode == iABC:
+            if self._opcode.mode == OpMode.iABC:
                 self._a, self._b, self._c = bitset_to_abc(instruction)
-            elif self._opcode.mode == iABx:
+            elif self._opcode.mode == OpMode.iABx:
                 self._a, self._bx = bitset_to_abx(instruction)
-            elif self._opcode.mode == iAsBx:
+            elif self._opcode.mode == OpMode.iAsBx:
                 self._a, self._sbx = bitset_to_asbx(instruction)
         else:
-            assert code_idx is not None and a is not None, "Must provide code_idx and a when instruction is None"
+            assert code_idx is not None and a is not None, (
+                "Must provide code_idx and a when instruction is None"
+            )
             self._opcode_idx = code_idx
             self._opcode = OPCODES[self._opcode_idx]
             if b is not None and c is not None:
@@ -124,7 +133,7 @@ class Instruction:
         return self._a, self._sbx
 
     def set_sbx(self, sbx: int) -> None:
-        assert self._opcode.mode == iAsBx, "Instruction is not in ABx format"
+        assert self._opcode.mode == OpMode.iAsBx, "Instruction is not in ABx format"
         self._sbx = sbx
 
     def _append_arg(self, arg_type: int, value: int, constants: list[Value]):
@@ -139,34 +148,38 @@ class Instruction:
         """Update instruction arguments with constant/upvalue info."""
         self._args.append(self._a)
 
-        if self._opcode.mode == iABC:
+        if self._opcode.mode == OpMode.iABC:
             assert type(self._b) is int and type(self._c) is int, "Instruction is not in ABC format"
             self._append_arg(self._opcode.argb, self._b, constants)
             self._append_arg(self._opcode.argc, self._c, constants)
-        elif self._opcode.mode == iABx:
+        elif self._opcode.mode == OpMode.iABx:
             assert type(self._bx) is int, "Instruction is not in ABx format"
             if self._opcode.name in ["LOADK", "GETGLOBAL", "SETGLOBAL"]:
                 self._comment.append(str(constants[self._bx]))
                 self._args.append(-(self._bx + 1))
             else:
                 self._args.append(self._bx)
-        elif self._opcode.mode == iAsBx:
+        elif self._opcode.mode == OpMode.iAsBx:
             assert type(self._sbx) is int, "Instruction is not in ABx format"
             self._args.append(self._sbx)
             self._comment.append(f"to {self._sbx + pc + 2}")
 
         # Special handling for specific opcodes
-        if self._opcode.name in ["GETUPVAL", "SETUPVAL"]:
-            if self._args[1] < len(upvalues):
-                self._comment.append(upvalues[self._args[1]])
+        if self._opcode.name in ["GETUPVAL", "SETUPVAL"] and self._args[1] < len(upvalues):
+            self._comment.append(upvalues[self._args[1]])
 
     def to_bitset(self) -> int:
         """Convert instruction back to its 32-bit integer representation."""
-        if self._opcode.mode == iABC:
-            return (self._opcode_idx & 0x3F) | a_to_bitset(self._a) | b_to_bitset(self._b or 0) | c_to_bitset(self._c or 0)
-        elif self._opcode.mode == iABx:
+        if self._opcode.mode == OpMode.iABC:
+            return (
+                (self._opcode_idx & 0x3F)
+                | a_to_bitset(self._a)
+                | b_to_bitset(self._b or 0)
+                | c_to_bitset(self._c or 0)
+            )
+        elif self._opcode.mode == OpMode.iABx:
             return (self._opcode_idx & 0x3F) | a_to_bitset(self._a) | bx_to_bitset(self._bx or 0)
-        elif self._opcode.mode == iAsBx:
+        elif self._opcode.mode == OpMode.iAsBx:
             return (self._opcode_idx & 0x3F) | a_to_bitset(self._a) | sbx_to_bitset(self._sbx or 0)
         else:
             raise ValueError("Invalid opcode mode")
@@ -174,20 +187,20 @@ class Instruction:
     def __str__(self) -> str:
         parts = [self._opcode.name.ljust(10)]
         if self._args:
-            parts.append(' '.join(str(arg) for arg in self._args))
+            parts.append(" ".join(str(arg) for arg in self._args))
             if self._comment:
                 parts.append(f"; {' '.join(self._comment)}")
         else:
             parts.append(f"a = {self._a}")
-            if self._opcode.mode == iABC:
+            if self._opcode.mode == OpMode.iABC:
                 parts.append(f"b = {self._b}")
                 parts.append(f"c = {self._c}")
-            elif self._opcode.mode == iABx:
+            elif self._opcode.mode == OpMode.iABx:
                 parts.append(f"bx = {self._bx}")
-            elif self._opcode.mode == iAsBx:
+            elif self._opcode.mode == OpMode.iAsBx:
                 parts.append(f"sbx = {self._sbx}")
 
-        return '\t'.join(parts)
+        return "\t".join(parts)
 
     def __repr__(self):
         return f"<Instruction {self._opcode.name} 0x{self.to_bitset():08X}>"

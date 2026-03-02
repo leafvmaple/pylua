@@ -3,18 +3,20 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from structs.value import Value
+    from structs.value import LuaValue, Value
 
 
-def _make_value(v) -> Value:
+def _make_value(v: LuaValue) -> Value:
     """Lazy import helper to create Value at runtime."""
     from structs.value import Value
+
     return Value(v)
 
 
-def _make_number_value(v) -> Value:
+def _make_number_value(v: int | float) -> Value:
     """Lazy import helper to create Value.number at runtime."""
     from structs.value import Value
+
     return Value.number(v)
 
 
@@ -98,7 +100,7 @@ class Table:
     def _shrink_list(self, key: int):
         for lua_idx in range(key + 1, len(self._list) + 1):
             self._map[lua_idx] = self._list[lua_idx - 1]
-        self._list = self._list[:key - 1]
+        self._list = self._list[: key - 1]
 
     def _expand_list(self):
         while (len(self._list) + 1) in self._map:

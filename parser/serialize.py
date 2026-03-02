@@ -3,14 +3,15 @@
 This module provides helper functions for converting AST nodes to dictionaries
 and other common operations.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from .block import Block
     from .expr import Expr
     from .stat import Stmt
-    from .block import Block
 
 
 def convert_value(value: Any) -> Any:
@@ -19,9 +20,9 @@ def convert_value(value: Any) -> Any:
     Handles AST nodes, lists, tuples, and primitive values.
     """
     # Import here to avoid circular dependencies
+    from .block import Block
     from .expr import Expr
     from .stat import Stmt
-    from .block import Block
 
     if isinstance(value, (Expr, Stmt, Block)):
         return value.to_dict()
@@ -33,16 +34,26 @@ def convert_value(value: Any) -> Any:
         return value
 
 
-def obj_to_dict(obj: Expr | Stmt | Block) -> dict[str, Any]:
+def asdict(obj: Expr | Stmt | Block) -> dict[str, Any]:
     """Convert an AST node to a dictionary using reflection.
 
     This creates a dictionary with:
     - 'type': The class name of the node
-    - All instance attributes with their converted values
+    - Fields from _fields tuple (if defined) or all instance attributes
     """
     result: dict[str, Any] = {"type": obj.__class__.__name__}
 
-    for key, value in obj.__dict__.items():
-        result[key] = convert_value(value)
+    # Use _fields tuple if defined, otherwise fall back to __dict__
+    fields = getattr(obj, "_fields", None)
+
+    if fields:
+        # Only serialize fields listed in _fields
+        for key in fields:
+            if hasattr(obj, key):
+                result[key] = convert_value(getattr(obj, key))
+    else:
+        # Fall back to all instance attributes
+        for key, value in obj.__dict__.items():
+            result[key] = convert_value(value)
 
     return result

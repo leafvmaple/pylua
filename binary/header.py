@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 class Header:
-    signature: bytes = b'\x1bLua'
+    signature: bytes = b"\x1bLua"
     version: int = 0x51
     format: int = 0
     endianness: int = 1

@@ -2,6 +2,7 @@
 
 This module defines all expression types in Lua and their parsing logic.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
@@ -17,14 +18,25 @@ from codegen.inst import CodegenInst
 BINARY_PRECEDENCE = {
     "OR": 1,
     "AND": 2,
-    "LT": 3, "GT": 3, "LE": 3, "GE": 3, "NE": 3, "EQ": 3,
+    "LT": 3,
+    "GT": 3,
+    "LE": 3,
+    "GE": 3,
+    "NE": 3,
+    "EQ": 3,
     "BOR": 4,
     "BXOR": 5,
     "BAND": 6,
-    "SHL": 7, "SHR": 7,
+    "SHL": 7,
+    "SHR": 7,
     "CONCAT": 8,  # Right associative
-    "PLUS": 9, "MINUS": 9, "UNM": 9,
-    "MULTIPLY": 10, "DIVIDE": 10, "IDIV": 10, "MOD": 10,
+    "PLUS": 9,
+    "MINUS": 9,
+    "UNM": 9,
+    "MULTIPLY": 10,
+    "DIVIDE": 10,
+    "IDIV": 10,
+    "MOD": 10,
     "POW": 11,  # Right associative
 }
 
@@ -33,8 +45,9 @@ UNARY_PRECEDENCE = 12  # Unary operators have higher precedence than all binary
 
 class Expr:
     def to_dict(self) -> dict[str, Any]:
-        from .lua_ast_util import obj_to_dict
-        return obj_to_dict(self)
+        from .serialize import asdict
+
+        return asdict(self)
 
     @classmethod
     def parse(cls, lexer: Lexer) -> Expr:
@@ -77,7 +90,7 @@ class Expr:
             else:
                 return expr
 
-        assert False, "Unreachable code in parse_postfix"
+        raise SyntaxError("Unexpected end of input in postfix expression")
 
     @staticmethod
     def parse_sub_expr(lexer: Lexer, limit: int) -> Expr:
@@ -146,14 +159,14 @@ class Expr:
         value_str = token.value
 
         # Hexadecimal number
-        if value_str.startswith(('0x', '0X')):
-            if '.' in value_str or 'p' in value_str or 'P' in value_str:
+        if value_str.startswith(("0x", "0X")):
+            if "." in value_str or "p" in value_str or "P" in value_str:
                 return FloatExpr.parse_hex(lexer)
             else:
                 return IntegerExpr.parse_hex(lexer)
         # Decimal number
         else:
-            if '.' in value_str or 'e' in value_str or 'E' in value_str:
+            if "." in value_str or "e" in value_str or "E" in value_str:
                 return FloatExpr.parse(lexer)
             else:
                 return IntegerExpr.parse(lexer)
@@ -166,6 +179,7 @@ class Expr:
 # ============================================================================
 # Literal Expressions
 # ============================================================================
+
 
 class NilExpr(Expr):
     @classmethod
@@ -285,6 +299,7 @@ class NameExpr(Expr):
         idx = info.idx_of_const(self.name)
         CodegenInst.get_global(info, reg, idx)
 
+
 # ============================================================================
 # Operator Expressions
 # ============================================================================
@@ -292,6 +307,7 @@ class NameExpr(Expr):
 
 class UnaryOpExpr(Expr):
     """Unary operator expression (not, -, #, ~)."""
+
     op: str
     expr: Expr
 
@@ -322,6 +338,7 @@ class UnaryOpExpr(Expr):
 
 class BinaryOpExpr(Expr):
     """Binary operator expression."""
+
     op: str
     left: Expr
     right: Expr
@@ -332,15 +349,16 @@ class BinaryOpExpr(Expr):
         self.right = right
 
     def codegen(self, info: FuncInfo, reg: int, cnt: int = 1):
-        if self.op == 'CONCAT':
+        if self.op == "CONCAT":
             exprs: list[Expr] = []
 
             def collect(e: Expr):
-                if type(e) is BinaryOpExpr and e.op == 'CONCAT':
+                if type(e) is BinaryOpExpr and e.op == "CONCAT":
                     collect(e.left)
                     collect(e.right)
                 else:
                     exprs.append(e)
+
             collect(self)
 
             start_reg = info.alloc_regs(len(exprs))
@@ -350,9 +368,9 @@ class BinaryOpExpr(Expr):
             CodegenInst.concat(info, reg, start_reg, start_reg + len(exprs) - 1)
             info.free_regs(len(exprs))
 
-        elif self.op in ('AND', 'OR'):
+        elif self.op in ("AND", "OR"):
             self.left.codegen(info, reg)
-            if self.op == 'AND':
+            if self.op == "AND":
                 CodegenInst.testset(info, reg, reg, 0)  # Jump if false
             else:  # OR
                 CodegenInst.testset(info, reg, reg, 1)  # Jump if true
@@ -362,7 +380,7 @@ class BinaryOpExpr(Expr):
             CodegenInst.move(info, reg, right_reg)
             info.free_reg()
 
-        elif self.op in ('EQ', 'NE', 'LT', 'LE', 'GT', 'GE'):
+        elif self.op in ("EQ", "NE", "LT", "LE", "GT", "GE"):
             # Comparison operators - result in boolean
             self.left.codegen(info, reg)
             right_reg = info.alloc_reg()
@@ -414,6 +432,7 @@ class ParenExpr(Expr):
 
 class TableConstructorExpr(Expr):
     """Table constructor expression {...}."""
+
     key_exps: list[Expr | None]
     val_exps: list[Expr]
 
@@ -465,7 +484,7 @@ class TableConstructorExpr(Expr):
         array_vals: list[Expr] = []
         hash_keys: list[Expr] = []
         hash_vals: list[Expr] = []
-        for key, val in zip(self.key_exps, self.val_exps):
+        for key, val in zip(self.key_exps, self.val_exps, strict=True):
             if key is None:
                 array_vals.append(val)
             else:
@@ -475,7 +494,7 @@ class TableConstructorExpr(Expr):
         CodegenInst.new_table(info, reg, len(array_vals), len(hash_keys))
 
         # Emit hash-style entries with SETTABLE
-        for key, val in zip(hash_keys, hash_vals):
+        for key, val in zip(hash_keys, hash_vals, strict=True):
             key_reg = info.alloc_reg()
             key.codegen(info, key_reg)
             val_reg = info.alloc_reg()
@@ -484,16 +503,16 @@ class TableConstructorExpr(Expr):
             info.free_regs(2)
 
         # Emit array-style entries with SETLIST (batches of 50)
-        LFIELDS_PER_FLUSH = 50
-        for batch_start in range(0, len(array_vals), LFIELDS_PER_FLUSH):
-            batch = array_vals[batch_start:batch_start + LFIELDS_PER_FLUSH]
+        fields_per_flush = 50
+        for batch_start in range(0, len(array_vals), fields_per_flush):
+            batch = array_vals[batch_start : batch_start + fields_per_flush]
             # SETLIST expects values in reg+1..reg+n, so force allocation there
             saved_used = info.used_regs
             info.used_regs = reg + 1
             batch_regs = info.alloc_regs(len(batch))
             for i, val in enumerate(batch):
                 val.codegen(info, batch_regs + i)
-            block = batch_start // LFIELDS_PER_FLUSH + 1  # 1-based block number
+            block = batch_start // fields_per_flush + 1  # 1-based block number
             CodegenInst.set_list(info, reg, len(batch), block)
             info.used_regs = saved_used
 
@@ -553,6 +572,7 @@ class TableAccessExpr(Expr):
 
 class FuncCallExpr(Expr):
     """Function call expression."""
+
     prefix_expr: Expr
     name_expr: NameExpr | None
     args: list[Expr]
@@ -589,7 +609,7 @@ class FuncCallExpr(Expr):
             return [StringExpr.parse(lexer)]
         else:
             return []
-   
+
     # cnt: return count
     def codegen(self, info: FuncInfo, reg: int = -1, cnt: int = 0):
         regs_cnt = max(len(self.args) + 1, cnt)
@@ -635,6 +655,7 @@ class FuncCallExpr(Expr):
 
 class FuncDefExpr(Expr):
     """Function definition expression."""
+
     param_names: list[NameExpr]
     is_vararg: bool
     body: Block
@@ -680,7 +701,7 @@ class FuncDefExpr(Expr):
             func_info.add_local_var(param.name)
 
         self.body.codegen(func_info)
-        
+
         # Generate return instruction
         if self.body.ret_exprs:
             num_rets = len(self.body.ret_exprs)
@@ -691,7 +712,7 @@ class FuncDefExpr(Expr):
             func_info.free_regs(num_rets)
         else:
             CodegenInst.ret(func_info, 0, 1)
-        
+
         func_info.exit_scope()
 
         idx = len(info.sub_funcs)

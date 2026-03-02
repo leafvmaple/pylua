@@ -1,33 +1,51 @@
 from __future__ import annotations
 
 TOKEN_TYPE = {
-    '+': "PLUS",
-    '-': "MINUS",
-    '*': "MULTIPLY",
-    '/': "DIVIDE",
-    '%': "MOD",
-    '^': "POW",
-    '#': "LEN",
-    '&': "BAND",
-    '~': "BXOR",
-    '|': "BOR",
-    '=': "ASSIGN",
-    ';': "SEMICOLON",
-    '(': "LPAREN",
-    ')': "RPAREN",
-    ',': "COMMA",
-    '{': "LBRACE",
-    '}': "RBRACE",
-    '[': "LBRACKET",
-    ']': "RBRACKET",
-    ':': "COLON",
+    "+": "PLUS",
+    "-": "MINUS",
+    "*": "MULTIPLY",
+    "/": "DIVIDE",
+    "%": "MOD",
+    "^": "POW",
+    "#": "LEN",
+    "&": "BAND",
+    "~": "BXOR",
+    "|": "BOR",
+    "=": "ASSIGN",
+    ";": "SEMICOLON",
+    "(": "LPAREN",
+    ")": "RPAREN",
+    ",": "COMMA",
+    "{": "LBRACE",
+    "}": "RBRACE",
+    "[": "LBRACKET",
+    "]": "RBRACKET",
+    ":": "COLON",
 }
 
 KEYWORDS = {
-    'and', 'break', 'do', 'else', 'elseif', 'end',
-    'false', 'for', 'function', 'goto', 'if', 'in',
-    'local', 'nil', 'not', 'or', 'repeat', 'return',
-    'then', 'true', 'until', 'while'
+    "and",
+    "break",
+    "do",
+    "else",
+    "elseif",
+    "end",
+    "false",
+    "for",
+    "function",
+    "goto",
+    "if",
+    "in",
+    "local",
+    "nil",
+    "not",
+    "or",
+    "repeat",
+    "return",
+    "then",
+    "true",
+    "until",
+    "while",
 }
 
 
@@ -65,10 +83,10 @@ class Lexer:
 
     @classmethod
     def from_file(cls, filepath: str):
-        with open(filepath, 'r') as f:
+        with open(filepath) as f:
             chunk = f.read()
         return cls(chunk, filepath)
-    
+
     @classmethod
     def from_string(cls, code: str, name: str = "<string>"):
         return cls(code, name)
@@ -90,12 +108,12 @@ class Lexer:
         """
         self.skip_whitespace()
         if self.is_eof():
-            return Token("EOF", '', self._line)
+            return Token("EOF", "", self._line)
 
         char = self.peek_char()
 
         # Dispatch based on first character
-        if char.isalpha() or char == '_':
+        if char.isalpha() or char == "_":
             return self.read_identifier()
 
         if char.isdigit():
@@ -105,28 +123,28 @@ class Lexer:
             return self.read_string()
 
         # Operators that may form multi-character tokens
-        if char == '-':
+        if char == "-":
             return self._scan_minus()
 
-        if char == '=':
+        if char == "=":
             return self._scan_equal()
 
-        if char == '~':
+        if char == "~":
             return self._scan_tilde()
 
-        if char == '<':
+        if char == "<":
             return self._scan_less()
 
-        if char == '>':
+        if char == ">":
             return self._scan_greater()
 
-        if char == '.':
+        if char == ".":
             return self._scan_dot()
 
-        if char == '/':
+        if char == "/":
             return self._scan_slash()
 
-        if char == ':':
+        if char == ":":
             return self._scan_colon()
 
         # Single-character operators
@@ -142,74 +160,74 @@ class Lexer:
     def _scan_minus(self) -> Token:
         """Scan '-' or '--' (comment)."""
         self.advance_char()
-        if self._match('-'):
+        if self._match("-"):
             return self.read_comment()
-        return Token("MINUS", '-', self._line)
+        return Token("MINUS", "-", self._line)
 
     def _scan_equal(self) -> Token:
         """Scan '=' or '=='."""
         self.advance_char()
-        if self._match('='):
-            return Token("EQ", '==', self._line)
-        return Token("ASSIGN", '=', self._line)
+        if self._match("="):
+            return Token("EQ", "==", self._line)
+        return Token("ASSIGN", "=", self._line)
 
     def _scan_tilde(self) -> Token:
         """Scan '~' or '~='."""
         self.advance_char()
-        if self._match('='):
-            return Token("NE", '~=', self._line)
-        return Token("BXOR", '~', self._line)
+        if self._match("="):
+            return Token("NE", "~=", self._line)
+        return Token("BXOR", "~", self._line)
 
     def _scan_less(self) -> Token:
         """Scan '<', '<=', or '<<'."""
         self.advance_char()
-        if self._match('='):
-            return Token("LE", '<=', self._line)
-        if self._match('<'):
-            return Token("SHL", '<<', self._line)
-        return Token("LT", '<', self._line)
+        if self._match("="):
+            return Token("LE", "<=", self._line)
+        if self._match("<"):
+            return Token("SHL", "<<", self._line)
+        return Token("LT", "<", self._line)
 
     def _scan_greater(self) -> Token:
         """Scan '>', '>=', or '>>'."""
         self.advance_char()
-        if self._match('='):
-            return Token("GE", '>=', self._line)
-        if self._match('>'):
-            return Token("SHR", '>>', self._line)
-        return Token("GT", '>', self._line)
+        if self._match("="):
+            return Token("GE", ">=", self._line)
+        if self._match(">"):
+            return Token("SHR", ">>", self._line)
+        return Token("GT", ">", self._line)
 
     def _scan_dot(self) -> Token:
         """Scan '.', '..', '...', or numbers starting with '.'."""
         self.advance_char()
 
-        if self._match('.'):
-            if self._match('.'):
-                return Token("VARARG", '...', self._line)
-            return Token("CONCAT", '..', self._line)
+        if self._match("."):
+            if self._match("."):
+                return Token("VARARG", "...", self._line)
+            return Token("CONCAT", "..", self._line)
 
         # Check for number starting with decimal point (e.g., .5)
         if not self.is_eof() and self.peek_char().isdigit():
             start_pos = self._chunk_pos - 1
             while not self.is_eof() and self.peek_char().isdigit():
                 self.advance_char()
-            value = self.chunk[start_pos:self._chunk_pos]
+            value = self.chunk[start_pos : self._chunk_pos]
             return Token("NUMBER", value, self._line)
 
-        return Token("DOT", '.', self._line)
+        return Token("DOT", ".", self._line)
 
     def _scan_slash(self) -> Token:
         """Scan '/' or '//'."""
         self.advance_char()
-        if self._match('/'):
-            return Token("IDIV", '//', self._line)
-        return Token("DIVIDE", '/', self._line)
+        if self._match("/"):
+            return Token("IDIV", "//", self._line)
+        return Token("DIVIDE", "/", self._line)
 
     def _scan_colon(self) -> Token:
         """Scan ':' or '::'."""
         self.advance_char()
-        if self._match(':'):
-            return Token("LABEL", '::', self._line)
-        return Token("COLON", ':', self._line)
+        if self._match(":"):
+            return Token("LABEL", "::", self._line)
+        return Token("COLON", ":", self._line)
 
     def _match(self, expected: str) -> bool:
         if self.is_eof() or self.peek_char() != expected:
@@ -229,7 +247,7 @@ class Lexer:
 
     def current(self) -> Token:
         if self.pos >= len(self.tokens):
-            return Token("EOF", '', self._line)
+            return Token("EOF", "", self._line)
         return self.tokens[self.pos]
 
     def lookahead(self) -> Token:
@@ -239,15 +257,19 @@ class Lexer:
     def consume(self, expect: str | None = None) -> Token:
         token = self.current()
         if expect and token.type != expect:
-            raise SyntaxError(f"{self.chunk_name}:{token.line}: expected '{expect}' but got '{token.type}'")
+            raise SyntaxError(
+                f"{self.chunk_name}:{token.line}: expected '{expect}' but got '{token.type}'"
+            )
         self.pos += 1
         return token
 
     def read_identifier(self) -> Token:
         start_pos = self._chunk_pos
-        while not self.is_eof() and ((char := self.peek_char()) and (char.isalnum() or char == '_')):
+        while not self.is_eof() and (
+            (char := self.peek_char()) and (char.isalnum() or char == "_")
+        ):
             self.advance_char()
-        value = self.chunk[start_pos: self._chunk_pos]
+        value = self.chunk[start_pos : self._chunk_pos]
         # Check if it's a keyword
         if value in KEYWORDS:
             return Token(value.upper(), value, self._line)
@@ -257,12 +279,12 @@ class Lexer:
         start_pos = self._chunk_pos
 
         # Check for hexadecimal prefix
-        if self._peek_ahead('0', ('x', 'X')):
+        if self._peek_ahead("0", ("x", "X")):
             self._scan_hex_number()
         else:
             self._scan_decimal_number()
 
-        value = self.chunk[start_pos:self._chunk_pos]
+        value = self.chunk[start_pos : self._chunk_pos]
         return Token("NUMBER", value, self._line)
 
     def _peek_ahead(self, first: str, second: tuple[str, ...]) -> bool:
@@ -281,14 +303,14 @@ class Lexer:
         self._scan_hex_digits()
 
         # Fractional part
-        if not self.is_eof() and self.peek_char() == '.':
+        if not self.is_eof() and self.peek_char() == ".":
             self.advance_char()
             self._scan_hex_digits()
 
         # Exponent part (binary exponent with base 2)
-        if not self.is_eof() and self.peek_char() in ('p', 'P'):
+        if not self.is_eof() and self.peek_char() in ("p", "P"):
             self.advance_char()
-            if not self.is_eof() and self.peek_char() in ('+', '-'):
+            if not self.is_eof() and self.peek_char() in ("+", "-"):
                 self.advance_char()
             self._scan_decimal_digits()
 
@@ -299,7 +321,7 @@ class Lexer:
         # Fractional part
         if (
             not self.is_eof()
-            and self.peek_char() == '.'
+            and self.peek_char() == "."
             and self._chunk_pos + 1 < len(self.chunk)
             and self.chunk[self._chunk_pos + 1].isdigit()
         ):
@@ -307,14 +329,14 @@ class Lexer:
             self._scan_decimal_digits()
 
         # Exponent part
-        if not self.is_eof() and self.peek_char() in ('e', 'E'):
+        if not self.is_eof() and self.peek_char() in ("e", "E"):
             self.advance_char()
-            if not self.is_eof() and self.peek_char() in ('+', '-'):
+            if not self.is_eof() and self.peek_char() in ("+", "-"):
                 self.advance_char()
             self._scan_decimal_digits()
 
     def _scan_hex_digits(self) -> None:
-        while not self.is_eof() and self.peek_char() in '0123456789abcdefABCDEF':
+        while not self.is_eof() and self.peek_char() in "0123456789abcdefABCDEF":
             self.advance_char()
 
     def _scan_decimal_digits(self) -> None:
@@ -329,22 +351,29 @@ class Lexer:
 
         # Scan until closing quote or EOF
         while not self.is_eof() and self.peek_char() != quote:
-            if self.peek_char() == '\\':
+            if self.peek_char() == "\\":
                 self.advance_char()  # skip backslash
                 if not self.is_eof():
                     esc = self.peek_char()
                     self.advance_char()
                     escape_map = {
-                        'n': '\n', 't': '\t', 'r': '\r',
-                        'a': '\a', 'b': '\b', 'f': '\f',
-                        'v': '\v', '\\': '\\', "'": "'",
-                        '"': '"', '0': '\0',
+                        "n": "\n",
+                        "t": "\t",
+                        "r": "\r",
+                        "a": "\a",
+                        "b": "\b",
+                        "f": "\f",
+                        "v": "\v",
+                        "\\": "\\",
+                        "'": "'",
+                        '"': '"',
+                        "0": "\0",
                     }
                     if esc in escape_map:
                         parts.append(escape_map[esc])
-                    elif esc == '\n':
+                    elif esc == "\n":
                         self._line += 1
-                        parts.append('\n')
+                        parts.append("\n")
                     elif esc.isdigit():
                         # Decimal escape \ddd (up to 3 digits)
                         digits = esc
@@ -357,13 +386,13 @@ class Lexer:
                         parts.append(chr(int(digits)))
                     else:
                         # Unknown escape, keep as-is
-                        parts.append('\\')
+                        parts.append("\\")
                         parts.append(esc)
             else:
                 parts.append(self.peek_char())
                 self.advance_char()
 
-        value = ''.join(parts)
+        value = "".join(parts)
 
         if not self.is_eof():
             self.advance_char()  # skip closing quote
@@ -372,7 +401,7 @@ class Lexer:
 
     def read_comment(self) -> Token:
         # Check for block comment --[[ ... ]]
-        if not self.is_eof() and self.peek_char() == '[':
+        if not self.is_eof() and self.peek_char() == "[":
             level = self._check_long_bracket()
             if level >= 0:
                 self._scan_long_string(level)
@@ -381,23 +410,23 @@ class Lexer:
         start_pos = self._chunk_pos
 
         # Single-line comment: consume until newline
-        while not self.is_eof() and self.peek_char() != '\n':
+        while not self.is_eof() and self.peek_char() != "\n":
             self.advance_char()
 
-        value = self.chunk[start_pos:self._chunk_pos]
+        value = self.chunk[start_pos : self._chunk_pos]
         return Token("COMMENT", value, self._line)
 
     def _check_long_bracket(self) -> int:
         """Check for long bracket [=*[ and return level (-1 if not found)."""
         saved_pos = self._chunk_pos
-        if self.is_eof() or self.peek_char() != '[':
+        if self.is_eof() or self.peek_char() != "[":
             return -1
         self.advance_char()  # skip first '['
         level = 0
-        while not self.is_eof() and self.peek_char() == '=':
+        while not self.is_eof() and self.peek_char() == "=":
             level += 1
             self.advance_char()
-        if not self.is_eof() and self.peek_char() == '[':
+        if not self.is_eof() and self.peek_char() == "[":
             self.advance_char()  # skip second '['
             return level
         # Not a long bracket, restore position
@@ -407,13 +436,13 @@ class Lexer:
     def _scan_long_string(self, level: int) -> str:
         """Scan a long string/comment with the given bracket level."""
         parts: list[str] = []
-        closing = ']' + '=' * level + ']'
+        closing = "]" + "=" * level + "]"
         while not self.is_eof():
-            if self.peek_char() == '\n':
+            if self.peek_char() == "\n":
                 self._line += 1
-            if self.chunk[self._chunk_pos:self._chunk_pos + len(closing)] == closing:
+            if self.chunk[self._chunk_pos : self._chunk_pos + len(closing)] == closing:
                 self._chunk_pos += len(closing)
-                return ''.join(parts)
+                return "".join(parts)
             parts.append(self.peek_char())
             self.advance_char()
         raise SyntaxError(f"unfinished long string/comment near line {self._line}")
@@ -425,7 +454,7 @@ class Lexer:
             raise SyntaxError(f"invalid long string near line {self._line}")
         value = self._scan_long_string(level)
         # Skip leading newline per Lua spec
-        if value.startswith('\n'):
+        if value.startswith("\n"):
             value = value[1:]
         return Token("STRING", value, self._line)
 
@@ -434,7 +463,7 @@ class Lexer:
             char = self.peek_char()
             if not char.isspace():
                 break
-            if char == '\n':
+            if char == "\n":
                 self._line += 1
             self.advance_char()
 
@@ -443,7 +472,7 @@ class Lexer:
 
     def peek_char(self) -> str:
         if self.is_eof():
-            return ''
+            return ""
         return self.chunk[self._chunk_pos]
 
     def advance_char(self) -> None:

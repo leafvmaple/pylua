@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import json
-
 from typing import Any
 
-from .lexer import Lexer
-from .expr import Expr
-from .stat import Stmt, ReturnStmt
 from codegen.func import FuncInfo
 from codegen.inst import CodegenInst
+
+from .expr import Expr
+from .lexer import Lexer
+from .stat import ReturnStmt, Stmt
 
 
 class Block:
@@ -39,11 +39,12 @@ class Block:
             stmt.codegen(info)
 
     def to_dict(self) -> dict[str, Any]:
-        from .lua_ast_util import obj_to_dict
-        return obj_to_dict(self)
+        from .serialize import asdict
+
+        return asdict(self)
 
     def __str__(self) -> str:
-        return json.dumps(self.to_dict(), indent='  ', ensure_ascii=False)
+        return json.dumps(self.to_dict(), indent="  ", ensure_ascii=False)
 
 
 class Parser:

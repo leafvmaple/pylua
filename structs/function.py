@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, TypeAlias
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from structs.instruction import Instruction
 
 if TYPE_CHECKING:
-    from vm.state import LuaState
     from structs.value import Value
-    PyFunction: TypeAlias = Callable[[LuaState], int]
+    from vm.state import LuaState
+
+    type PyFunction = Callable[[LuaState], int]
 
 
 class LocalVar:
@@ -31,13 +33,13 @@ class Debug:
 
     def __str__(self) -> str:
         parts: list[str] = []
-        parts.append(f'locals ({len(self.loc_vars)}):')
+        parts.append(f"locals ({len(self.loc_vars)}):")
         parts.extend(f"\t{i}\t{value}" for i, value in enumerate(self.loc_vars))
 
-        parts.append(f'upvalues ({len(self.upvalues)}):')
+        parts.append(f"upvalues ({len(self.upvalues)}):")
         parts.extend(f"\t{i}\t{value}" for i, value in enumerate(self.upvalues))
 
-        return '\n'.join(parts)
+        return "\n".join(parts)
 
 
 class Proto:
@@ -69,16 +71,20 @@ class Proto:
 
     def __str__(self) -> str:
         parts: list[str] = []
-        parts.append(f"{self.type} <{self.source}:{self.line_defined},{self.last_line_defined}> ({len(self.codes)} instructions)")
-        parts.append(f"{self.num_params} params, {self.max_stack_size} slots, {len(self.debug.upvalues)} upvalues, \
-                     {len(self.debug.loc_vars)} locals, {len(self.consts)} constants, {len(self.protos)} functions")
+        parts.append(
+            f"{self.type} <{self.source}:{self.line_defined},{self.last_line_defined}> ({len(self.codes)} instructions)"
+        )
+        parts.append(
+            f"{self.num_params} params, {self.max_stack_size} slots, {len(self.debug.upvalues)} upvalues, \
+                     {len(self.debug.loc_vars)} locals, {len(self.consts)} constants, {len(self.protos)} functions"
+        )
         parts.extend(f"\t{pc + 1}\t{code}" for pc, code in enumerate(self.codes))
-        parts.append(f'constants ({len(self.consts)}):')
+        parts.append(f"constants ({len(self.consts)}):")
         parts.extend(f"\t{i + 1}\t{value}" for i, value in enumerate(self.consts))
         parts.append(str(self.debug))
         parts.extend(str(sub) for sub in self.protos)
 
-        return '\n' + '\n'.join(parts)
+        return "\n" + "\n".join(parts)
 
 
 class Closure:
@@ -95,6 +101,7 @@ class LClosure(Closure):
 
     def __init__(self, func: Proto):
         from structs.value import Value
+
         self.stack = [Value.nil()] * func.max_stack_size
         self.upvalues = [Value.nil()] * func.num_upvalues
         # Initialize upvalues based on function prototype

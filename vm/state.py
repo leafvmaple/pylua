@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from typing import Optional, TYPE_CHECKING
-from vm.operator import Operator, DISPATCH_TABLE
-from structs.instruction import Instruction
-from structs.value import Value
-from structs.table import Table
+from typing import TYPE_CHECKING
+
 from structs.function import LClosure, PClosure, Proto
+from structs.instruction import Instruction
+from structs.table import Table
+from structs.value import Value
 from vm.builtins import BUILTIN
+from vm.operator import DISPATCH_TABLE
 
 if TYPE_CHECKING:
     from structs.function import PyFunction
@@ -66,8 +67,6 @@ class LuaState:
         self.register("pcall", BUILTIN.lua_pcall)
 
     def get_global(self, name: str) -> Value:
-        if not isinstance(name, str):
-            raise TypeError(f"name must be a string, got {type(name)}")
         key = Value.string(name)
         value = self.globals.get(key)
         return value if value is not None else Value.nil()
@@ -194,7 +193,9 @@ class LuaState:
             func_value = mt.get(Value("__call")) if mt else None
             if func_value and func_value.is_function():
                 assert type(func_value.value) is LClosure
-                self.stack[idx] = self.lua_call(func_value.value, *self.stack[idx: idx + nargs + 1])
+                self.stack[idx] = self.lua_call(
+                    func_value.value, *self.stack[idx : idx + nargs + 1]
+                )
         else:
             raise TypeError(f"attempt to call a {func_value.type_name()} value")
 
@@ -250,9 +251,7 @@ class LuaState:
             method(inst, self)
         else:
             raise RuntimeError(f"unknown opcode: {op_name}")
-        if op_name == "RETURN":
-            return False
-        return True
+        return op_name != "RETURN"
 
     def pre_call(self, closure: LClosure, func_idx: int = 0, nargs: int = 0, num_rets: int = 0):
         closure.stack = [Value.nil()] * closure.func.max_stack_size
@@ -287,6 +286,7 @@ class LuaState:
 
     def pos_call(self, ret_start: int, ret_count: int = 0):
         closure = self.pop_closure()
+        assert type(closure) is LClosure
 
         # Handle return values
         if ret_count == -1:
@@ -299,7 +299,7 @@ class LuaState:
             ret_value = closure.stack[ret_start + i] if i < ret_count else Value.nil()
             self.stack[closure.ret_idx + i] = ret_value
 
-    def next(self, idx: int) -> Optional[tuple[Value, Value]]:
+    def next(self, idx: int) -> tuple[Value, Value] | None:
         table = self.stack[idx]
         key = self.stack[-1]
         if not table.is_table():
@@ -347,7 +347,7 @@ class LuaState:
         """Convert Lua stack index to Value reference"""
         if idx > 0:
             return self.stack[idx - 1]
-        elif idx > LUA_GLOBALS_INDEX:   # idx < 0
+        elif idx > LUA_GLOBALS_INDEX:  # idx < 0
             return self.stack[len(self.stack) + idx]
         else:
             if idx == LUA_GLOBALS_INDEX:
@@ -360,7 +360,7 @@ class LuaState:
         assert len(self.call_info) > 0 and type(self.call_info[-1]) is LClosure
         self.call_info[-1].pc += offset
 
-    def fetch(self) -> Optional[Instruction]:
+    def fetch(self) -> Instruction | None:
         if self.call_info:
             assert type(self.call_info[-1]) is LClosure
             return self.call_info[-1].fetch()

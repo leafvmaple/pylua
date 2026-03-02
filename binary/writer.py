@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from structs.value import LUA_TYPE, Value
+from structs.function import Debug, LocalVar, Proto
 from structs.instruction import Instruction
-from structs.function import LocalVar, Debug, Proto
+from structs.value import LuaType, Value
+
 from .header import Header
 from .io import Writer
 
@@ -45,15 +46,17 @@ def write_debug(file: Writer, debug: Debug) -> None:
 
 def write_value(file: Writer, value: Value) -> None:
     if value.is_nil():
-        file.write_uint8(LUA_TYPE.NIL.value)
+        file.write_uint8(LuaType.NIL.value)
     elif value.is_boolean():
-        file.write_uint8(LUA_TYPE.BOOLEAN.value)
+        file.write_uint8(LuaType.BOOLEAN.value)
         file.write_uint8(1 if value.value else 0)
     elif value.is_number():
-        file.write_uint8(LUA_TYPE.NUMBER.value)
+        file.write_uint8(LuaType.NUMBER.value)
+        assert isinstance(value.value, (int, float))
         file.write_double(value.value)
     elif value.is_string():
-        file.write_uint8(LUA_TYPE.STRING.value)
+        file.write_uint8(LuaType.STRING.value)
+        assert isinstance(value.value, str)
         file.write_string(value.value)
     else:
         raise ValueError(f"Cannot serialize value type: {type(value.value)}")
@@ -89,14 +92,14 @@ def write_proto(file: Writer, proto: Proto) -> None:
 
 def write_bytecode(proto: Proto, output_file: str) -> None:
     """Write a Proto to a bytecode file.
-    
+
     Args:
         proto: The Proto to write
         output_file: The path to the output file
     """
     # Create a default header
     header = Header()
-    header.signature = b'\x1bLua'
+    header.signature = b"\x1bLua"
     header.version = 0x51  # Lua 5.1 (matches our opcodes)
     header.format = 0
     header.endianness = 1  # Little endian
@@ -104,10 +107,10 @@ def write_bytecode(proto: Proto, output_file: str) -> None:
     header.size_len = 4
     header.inst_len = 4
     header.number_len = 8
-    header.number_is_int = 0
+    header.number_is_int = False
 
     # Write to file
-    with open(output_file, 'wb') as f:
+    with open(output_file, "wb") as f:
         writer = Writer(f)
         write_header(writer, header)
         write_proto(writer, proto)

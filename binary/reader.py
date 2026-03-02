@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-
-from structs.value import LUA_TYPE, Value
+from structs.function import Debug, LocalVar, Proto
 from structs.instruction import Instruction
-from structs.function import LocalVar, Debug, Proto
+from structs.value import LuaType, Value
+
 from .header import Header
 from .io import Reader
 
@@ -11,7 +11,7 @@ from .io import Reader
 def read_header(file: Reader) -> Header:
     header = Header()
     header.signature = file.read_bytes(4)
-    if header.signature != b'\x1bLua':
+    if header.signature != b"\x1bLua":
         raise ValueError("Not a valid Lua bytecode file")
     header.version = file.read_uint8()
     if header.version not in Header.SUPPORTED_VERSIONS:
@@ -23,7 +23,7 @@ def read_header(file: Reader) -> Header:
     header.size_len = file.read_uint8()
     header.inst_len = file.read_uint8()
     header.number_len = file.read_uint8()
-    header.number_is_int = (file.read_uint8() != 0)
+    header.number_is_int = file.read_uint8() != 0
     return header
 
 
@@ -56,14 +56,14 @@ def read_debug(file: Reader) -> Debug:
 
 
 def read_value(file: Reader) -> Value:
-    _type = LUA_TYPE(file.read_uint8())
-    if _type == LUA_TYPE.NIL:
+    _type = LuaType(file.read_uint8())
+    if _type == LuaType.NIL:
         return Value.nil()
-    elif _type == LUA_TYPE.BOOLEAN:
+    elif _type == LuaType.BOOLEAN:
         return Value.boolean(file.read_uint8() != 0)
-    elif _type == LUA_TYPE.NUMBER:
+    elif _type == LuaType.NUMBER:
         return Value.number(file.read_double())
-    elif _type == LUA_TYPE.STRING:
+    elif _type == LuaType.STRING:
         return Value.string(file.read_string())
     else:
         raise ValueError(f"Unknown constant type: {_type}")

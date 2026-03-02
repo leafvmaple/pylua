@@ -1,16 +1,18 @@
 """Lua VM operators implementation."""
+
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, TypeAlias
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
-from structs.instruction import Instruction
-from structs.value import Value
-from structs.table import Table
 from structs.function import LClosure
+from structs.instruction import Instruction
+from structs.table import Table
+from structs.value import Value
 from vm.protocols import LuaCheckable
 
 if TYPE_CHECKING:
-    from lua_state import LuaState
+    from .state import LuaState
 
 
 class CheckNumber(LuaCheckable):
@@ -26,19 +28,17 @@ class CheckNumber(LuaCheckable):
 class CompareCheck(LuaCheckable):
     @staticmethod
     def check(val: Value) -> bool:
-        assert False, "CompareCheck.check should not be called"
+        raise RuntimeError("CompareCheck.check should not be called")
 
     @staticmethod
     def checks(va: Value, vb: Value) -> bool:
         if va.is_number() and vb.is_number():
             return True
-        if va.is_string() and vb.is_string():
-            return True
-        return False
+        return va.is_string() and vb.is_string()
 
 
-UnaryFuncType: TypeAlias = Callable[[int | float | bool], int | float | bool]
-BinaryFuncType: TypeAlias = Callable[[int | float, int | float], int | float]
+type UnaryFuncType = Callable[[int | float | bool], int | float | bool]
+type BinaryFuncType = Callable[[int | float, int | float], int | float]
 
 
 class UnaryOperator:
@@ -51,8 +51,8 @@ class UnaryOperator:
         self.meta = meta
         self.check = check
 
-    def solve(self, L: LuaState, a: int) -> Value | bool:
-        va = L.get_rk(a)
+    def solve(self, state: LuaState, a: int) -> Value | bool:
+        va = state.get_rk(a)
         mt = va.get_metatable()
         if self.check.check(va):
             assert isinstance(va.value, (int, float))
@@ -62,16 +62,16 @@ class UnaryOperator:
                 meta_func = mt.get(Value.string(self.meta))
                 if meta_func and meta_func.is_function():
                     assert type(meta_func.value) is LClosure
-                    return L.lua_call(meta_func.value, va)
+                    return state.lua_call(meta_func.value, va)
         return False
 
-    def arith(self, L: LuaState, idx: int, a: int):
-        res = self.solve(L, a)
+    def arith(self, state: LuaState, idx: int, a: int):
+        res = self.solve(state, a)
         if res:
             assert type(res) is Value
-            L.stack[idx] = res
+            state.stack[idx] = res
         else:
-            va = L.get_rk(a)
+            va = state.get_rk(a)
             raise TypeError(f"attempt to perform arithmetic on {va.type_name()}")
 
 
@@ -85,9 +85,9 @@ class BinaryOperator:
         self.meta = meta
         self.check = check
 
-    def solve(self, L: LuaState, a: int, b: int) -> Value | bool:
-        va = L.get_rk(a)
-        vb = L.get_rk(b)
+    def solve(self, state: LuaState, a: int, b: int) -> Value | bool:
+        va = state.get_rk(a)
+        vb = state.get_rk(b)
         mt = va.get_metatable()
         if mt is None:
             mt = vb.get_metatable()
@@ -99,20 +99,22 @@ class BinaryOperator:
                 meta_func = mt.get(Value.string(self.meta))
                 if meta_func and meta_func.is_function():
                     assert type(meta_func.value) is LClosure
-                    return L.lua_call(meta_func.value, va, vb)
+                    return state.lua_call(meta_func.value, va, vb)
         return False
-    
-    def arith(self, L: LuaState, idx: int, a: int, b: int):
-        res = self.solve(L, a, b)
-        if type(res) is Value:
-            L.stack[idx] = res
-        else:
-            va = L.stack[a]
-            vb = L.stack[b]
-            raise TypeError(f"attempt to perform arithmetic on {va.type_name()} and {vb.type_name()}")
 
-    def compare(self, L: LuaState, a: int, b: int) -> bool:
-        res = self.solve(L, a, b)
+    def arith(self, state: LuaState, idx: int, a: int, b: int):
+        res = self.solve(state, a, b)
+        if type(res) is Value:
+            state.stack[idx] = res
+        else:
+            va = state.stack[a]
+            vb = state.stack[b]
+            raise TypeError(
+                f"attempt to perform arithmetic on {va.type_name()} and {vb.type_name()}"
+            )
+
+    def compare(self, state: LuaState, a: int, b: int) -> bool:
+        res = self.solve(state, a, b)
         if type(res) is Value:
             return bool(res.value)
         return False
@@ -120,7 +122,7 @@ class BinaryOperator:
 
 UNARY_ARITH = {
     "UNM": UnaryOperator(lambda a: -a, CheckNumber, "__unm"),
-    "BONA": UnaryOperator(lambda a: not a, CheckNumber, "__bnot")
+    "BONA": UnaryOperator(lambda a: not a, CheckNumber, "__bnot"),
 }
 
 
@@ -130,14 +132,14 @@ BINARY_ARITH = {
     "MUL": BinaryOperator(lambda a, b: a * b, CheckNumber, "__mul"),
     "DIV": BinaryOperator(lambda a, b: a / b, CheckNumber, "__div"),
     "MOD": BinaryOperator(lambda a, b: a % b, CheckNumber, "__mod"),
-    "POW": BinaryOperator(lambda a, b: a ** b, CheckNumber, "__pow"),
-
+    "POW": BinaryOperator(lambda a, b: a**b, CheckNumber, "__pow"),
     "EQ": BinaryOperator(lambda a, b: a == b, CompareCheck, "__eq"),
     "LT": BinaryOperator(lambda a, b: a < b, CompareCheck, "__lt"),
     "LE": BinaryOperator(lambda a, b: a <= b, CompareCheck, "__le"),
 }
 
 
+# ruff:noqa: N802 - Follows Lua's opcode naming convention
 class Operator:
     @staticmethod
     def MOVE(inst: Instruction, state: LuaState):
@@ -216,12 +218,13 @@ class Operator:
             assert isinstance(table_value.value, Table)
             table_value.value.set(key, value)
         else:
-            # Try __newindex metamethod
+            # Try __newindex meta method
             mt = table_value.get_metatable()
             if mt:
-                newindex = mt.get(Value.string("__newindex"))
-                if newindex and newindex.is_function():
-                    state.lua_call(newindex.value, table_value, key, value)
+                new_index = mt.get(Value.string("__newindex"))
+                if new_index and new_index.is_function():
+                    assert type(new_index.value) is LClosure
+                    state.lua_call(new_index.value, table_value, key, value)
                     return
             raise TypeError(f"attempt to index a {table_value.type_name()} value")
 
@@ -291,7 +294,7 @@ class Operator:
             s = val.get_string()
             if s is not None:
                 parts.append(s)
-        state.stack[a] = Value.string(''.join(parts))
+        state.stack[a] = Value.string("".join(parts))
 
     @staticmethod
     def JMP(inst: Instruction, state: LuaState):
@@ -366,10 +369,12 @@ class Operator:
         new_idx = Value.number(idx.value + step.value)
         state.stack[a] = new_idx
         limit = state.stack[a + 1]
+        assert isinstance(new_idx.value, (int, float))
         assert isinstance(limit.value, (int, float))
 
-        if (step.value > 0 and new_idx.value <= limit.value) or \
-           (step.value <= 0 and new_idx.value >= limit.value):
+        if (step.value > 0 and new_idx.value <= limit.value) or (
+            step.value <= 0 and new_idx.value >= limit.value
+        ):
             state.jump(sbx)
             state.stack[a + 3] = new_idx
 
@@ -434,8 +439,8 @@ class Operator:
 
 
 # Pre-built dispatch table for O(1) opcode lookup instead of getattr
-DISPATCH_TABLE: dict[str, Callable] = {
+DISPATCH_TABLE: dict[str, Callable[[Instruction, LuaState], None]] = {
     name: getattr(Operator, name)
     for name in dir(Operator)
-    if not name.startswith('_') and callable(getattr(Operator, name))
+    if not name.startswith("_") and callable(getattr(Operator, name))
 }

@@ -1,4 +1,5 @@
 """Lua built-in functions implementation."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -16,7 +17,7 @@ class BUILTIN:
         outputs: list[str] = []
         for i in range(n):
             outputs.append(str(state.stack[i]))
-        print('\t'.join(outputs))
+        print("\t".join(outputs))
         return 0
 
     @staticmethod
@@ -83,6 +84,7 @@ class BUILTIN:
     def lua_rawlen(state: LuaState) -> int:
         """rawlen(v) -> number"""
         from structs.table import Table
+
         if state.gettop() < 1:
             raise RuntimeError("bad argument #1 to 'rawlen'")
         val = state.stack[0]
@@ -100,6 +102,7 @@ class BUILTIN:
     def lua_rawset(state: LuaState) -> int:
         """rawset(table, index, value) -> table"""
         from structs.table import Table
+
         if state.gettop() < 3:
             raise RuntimeError("bad argument to 'rawset'")
         t = state.stack[0]
@@ -118,6 +121,7 @@ class BUILTIN:
     def lua_rawget(state: LuaState) -> int:
         """rawget(table, index) -> value"""
         from structs.table import Table
+
         if state.gettop() < 2:
             raise RuntimeError("bad argument to 'rawget'")
         t = state.stack[0]
@@ -136,7 +140,7 @@ class BUILTIN:
             raise RuntimeError("bad argument #1 to 'select'")
         idx = state.stack[0]
         n = state.gettop() - 1  # number of varargs
-        if idx.is_string() and idx.value == '#':
+        if idx.is_string() and idx.value == "#":
             state.pushvalue(Value.number(n))
             return 1
         if not idx.is_number():
@@ -146,7 +150,7 @@ class BUILTIN:
         if i < 0:
             i = n + i + 1
         if i < 1 or i > n:
-            raise RuntimeError(f"bad argument #1 to 'select' (index out of range)")
+            raise RuntimeError("bad argument #1 to 'select' (index out of range)")
         # Return elements from index i onwards
         count = 0
         for j in range(i, n + 1):
@@ -158,13 +162,14 @@ class BUILTIN:
     def lua_unpack(state: LuaState) -> int:
         """unpack(list [, i [, j]]) -> elements"""
         from structs.table import Table
+
         if state.gettop() < 1:
             raise RuntimeError("bad argument #1 to 'unpack' (table expected)")
         t = state.stack[0]
         if not t.is_table():
             raise RuntimeError(f"bad argument #1 to 'unpack' (table expected, got {t.type_name()})")
         assert isinstance(t.value, Table)
-        
+
         i = 1
         j = t.value.len()
         if state.gettop() >= 2:
@@ -177,7 +182,7 @@ class BUILTIN:
             if jv.is_number():
                 assert isinstance(jv.value, (int, float))
                 j = int(jv.value)
-        
+
         count = 0
         for idx in range(i, j + 1):
             val = t.value.get(idx)
@@ -193,7 +198,7 @@ class BUILTIN:
 
     @staticmethod
     def lua_setmetatable(state: LuaState) -> int:
-        if (state.getmetafield(1, "__metatable") != 0):
+        if state.getmetafield(1, "__metatable") != 0:
             raise RuntimeError("cannot change a protected metatable")
         state.settop(2)
         state.setmetatable(1)
@@ -202,6 +207,7 @@ class BUILTIN:
     @staticmethod
     def lua_ipairsaux(state: LuaState) -> int:
         from structs.table import Table
+
         table = state.stack[0]
         index = state.stack[1]
         if not table.is_table():

@@ -3,11 +3,13 @@
 This module defines all statement types in Lua and their parsing
 logic.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
+
+from .expr import Expr, FuncCallExpr, FuncDefExpr, NameExpr, TableAccessExpr, TrueExpr
 from .lexer import Lexer
-from .expr import Expr, NameExpr, FuncCallExpr, TrueExpr, FuncDefExpr, TableAccessExpr
 
 if TYPE_CHECKING:
     from .block import Block
@@ -62,7 +64,9 @@ class Stmt:
 
         # Return statement (should not be called directly)
         elif token.type == "RETURN":
-            assert False, "Use ReturnStat.parse_list to parse return statements"
+            raise NotImplementedError(
+                "Return statements should be parsed using ReturnStmt.parse_list"
+            )
 
         # Assignment or function call
         else:
@@ -77,13 +81,15 @@ class Stmt:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert statement to dictionary using reflection."""
-        from .lua_ast_util import obj_to_dict
-        return obj_to_dict(self)
+        from .serialize import asdict
+
+        return asdict(self)
 
 
 # ============================================================================
 # Simple Statements
 # ============================================================================
+
 
 class EmptyStmt(Stmt):
     @classmethod
@@ -98,6 +104,7 @@ class EmptyStmt(Stmt):
 # TODO
 class BreakStmt(Stmt):
     """Break statement."""
+
     line: int
 
     def __init__(self, line: int = 0):
@@ -139,8 +146,10 @@ class FuncCallStmt(Stmt):
 # Block Statements
 # ============================================================================
 
+
 class DoStmt(Stmt):
     """Do-end block statement."""
+
     block: Block
 
     def __init__(self, block: Block):
@@ -163,6 +172,7 @@ class DoStmt(Stmt):
 
 class WhileStmt(Stmt):
     """While loop statement."""
+
     exp: Expr
     block: Block
 
@@ -210,6 +220,7 @@ class WhileStmt(Stmt):
 
 class RepeatStmt(Stmt):
     """Repeat-until loop statement."""
+
     block: Block
     exp: Expr
 
@@ -249,6 +260,7 @@ class RepeatStmt(Stmt):
 
 class IfStmt(Stmt):
     """If-then-elseif-else-end statement."""
+
     exps: list[Expr]
     blocks: list[Block]
 
@@ -321,6 +333,7 @@ class IfStmt(Stmt):
         for jmp_pc in jmp_to_ends:
             info.insts[jmp_pc].set_sbx(pc_end - jmp_pc - 1)
 
+
 # ============================================================================
 # Loop Statements
 # ============================================================================
@@ -346,13 +359,21 @@ class ForStmt(Stmt):
 
 class ForNumStat(Stmt):
     """for var = init, limit [, step] do ... end"""
+
     varname: NameExpr
     init_expr: Expr
     limit_expr: Expr
     step_expr: Expr | None
     block: Block
 
-    def __init__(self, varname: NameExpr, init_expr: Expr, limit_expr: Expr, step_expr: Expr | None, block: Block):
+    def __init__(
+        self,
+        varname: NameExpr,
+        init_expr: Expr,
+        limit_expr: Expr,
+        step_expr: Expr | None,
+        block: Block,
+    ):
         self.varname = varname
         self.init_expr = init_expr
         self.limit_expr = limit_expr
@@ -362,6 +383,7 @@ class ForNumStat(Stmt):
     @classmethod
     def parse_with_name(cls, lexer: Lexer, varname: NameExpr) -> ForNumStat:
         from .block import Block
+
         lexer.consume("ASSIGN")
         init_expr = Expr.parse(lexer)
         lexer.consume("COMMA")
@@ -416,6 +438,7 @@ class ForNumStat(Stmt):
 
 class ForInStat(Stmt):
     """for vars in expr list do ... end"""
+
     var_names: list[NameExpr]
     exprs: list[Expr]
     block: Block
@@ -448,7 +471,10 @@ class ForInStat(Stmt):
 
         reg = info.used_regs
 
-        iter_decl = LocalVarDeclStat([NameExpr("(for generator)"), NameExpr("(for state)"), NameExpr("(for control)")], self.exprs)
+        iter_decl = LocalVarDeclStat(
+            [NameExpr("(for generator)"), NameExpr("(for state)"), NameExpr("(for control)")],
+            self.exprs,
+        )
         iter_decl.codegen(info)
 
         # Add loop variables to scope
@@ -481,6 +507,7 @@ class ForInStat(Stmt):
 # Declaration and Assignment Statements
 # ============================================================================
 
+
 class LocalStmt(Stmt):
     @classmethod
     def parse(cls, lexer: Lexer) -> LocalVarDeclStat | LocalFuncDefStat:
@@ -494,6 +521,7 @@ class LocalStmt(Stmt):
 
 class LocalVarDeclStat(Stmt):
     """local vars [= exp list]"""
+
     var_names: list[NameExpr]
     exprs: list[Expr]
 
@@ -516,7 +544,7 @@ class LocalVarDeclStat(Stmt):
         return cls(var_names, exps)
 
     def codegen(self, info: FuncInfo):
-         for i in range(len(self.var_names)):
+        for i in range(len(self.var_names)):
             var = info.add_local_var(self.var_names[i].name)
             if i == len(self.exprs) - 1 and type(self.exprs[i]) is FuncCallExpr:
                 for j in range(i + 1, len(self.var_names)):
@@ -531,6 +559,7 @@ class LocalVarDeclStat(Stmt):
 
 class AssignStmt(Stmt):
     """varlist = expr list"""
+
     var_list: list[Expr]
     expr_list: list[Expr]
 
@@ -608,6 +637,7 @@ class AssignStmt(Stmt):
 
 class LocalFuncDefStat(Stmt):
     """local function name func body end"""
+
     name: NameExpr
     body: FuncDefExpr
 

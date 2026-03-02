@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from typing import TypeAlias, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from structs.function import LocalVar, Proto
     from structs.instruction import Instruction
-    from structs.function import Proto, LocalVar
 
-Const: TypeAlias = int | float | str | bool
+type Const = int | float | str | bool
 
 
 class LocalVarInfo:
@@ -21,6 +21,7 @@ class LocalVarInfo:
 
     def to_local_var(self) -> LocalVar:
         from structs.function import LocalVar
+
         local_var = LocalVar()
         local_var.name = self.name
         local_var.start_pc = 0
@@ -75,8 +76,9 @@ class FuncInfo:
         self.max_regs = 0
 
     def to_proto(self) -> Proto:
-        from structs.function import Proto, Debug
+        from structs.function import Debug, Proto
         from structs.value import Value
+
         proto = Proto()
         # proto.source = source
         proto.num_params = self.num_params
@@ -182,18 +184,21 @@ class FuncInfo:
 
     def emit_abc(self, opcode: int, a: int, b: int, c: int) -> None:
         from structs.instruction import Instruction
+
         """Emit an ABC format instruction."""
         inst = (opcode & 0x3F) | ((a & 0xFF) << 6) | ((b & 0x1FF) << 23) | ((c & 0x1FF) << 14)
         self.insts.append(Instruction(inst))
 
     def emit_abx(self, opcode: int, a: int, bx: int) -> None:
         from structs.instruction import Instruction
+
         """Emit an ABx format instruction."""
         inst = (opcode & 0x3F) | ((a & 0xFF) << 6) | ((bx & 0x3FFFF) << 14)
         self.insts.append(Instruction(inst))
 
     def emit_asbx(self, opcode: int, a: int, sbx: int) -> None:
         from structs.instruction import Instruction
+
         """Emit an AsBx format instruction."""
         bias = 131071  # 2^18 - 1
         inst = (opcode & 0x3F) | ((a & 0xFF) << 6) | (((sbx + bias) & 0x3FFFF) << 14)
@@ -201,6 +206,7 @@ class FuncInfo:
 
     def emit_ax(self, opcode: int, ax: int) -> None:
         from structs.instruction import Instruction
+
         """Emit an Ax format instruction."""
         inst = (opcode & 0x3F) | ((ax & 0x3FFFFFF) << 6)
         self.insts.append(Instruction(inst))
@@ -213,13 +219,15 @@ class FuncInfo:
         """Generate a human-readable representation of the function info."""
         lines: list[str] = []
         lines.append(f"Function ({len(self.insts)} instructions)")
-        lines.append(f"{self.num_params} params, {self.max_regs} slots, "
-                     f"{len(self.upval_names)} upvalues, {len(self.loc_vars)} locals, "
-                     f"{len(self.constants)} constants, {len(self.sub_funcs)} functions")
+        lines.append(
+            f"{self.num_params} params, {self.max_regs} slots, "
+            f"{len(self.upval_names)} upvalues, {len(self.loc_vars)} locals, "
+            f"{len(self.constants)} constants, {len(self.sub_funcs)} functions"
+        )
 
         # Instructions
         for i, inst in enumerate(self.insts, 1):
-            lines.append(f'\t{i}\t{inst}')
+            lines.append(f"\t{i}\t{inst}")
 
         # Constants
         if self.constants:
@@ -228,19 +236,19 @@ class FuncInfo:
                 if isinstance(const, str):
                     lines.append(f'\t{i}\t"{const}"')
                 else:
-                    lines.append(f'\t{i}\t{const}')
+                    lines.append(f"\t{i}\t{const}")
 
         # Locals
         if self.loc_vars:
             lines.append(f"locals ({len(self.loc_vars)}):")
             for i, var in enumerate(self.loc_vars):
-                lines.append(f'\t{i}\t{var.name}\treg={var.reg_idx}\tscope={var.scope_depth}')
+                lines.append(f"\t{i}\t{var.name}\treg={var.reg_idx}\tscope={var.scope_depth}")
 
         # Up values
         if self.upval_names:
             lines.append(f"upvalues ({len(self.upval_names)}):")
             for name, info in self.upval_names.items():
-                lines.append(f'\t{info.idx}\t{name}')
+                lines.append(f"\t{info.idx}\t{name}")
 
         # Sub-functions
         if self.sub_funcs:
@@ -248,4 +256,4 @@ class FuncInfo:
             for i, sub in enumerate(self.sub_funcs):
                 lines.append(f"\n[{i}] {sub}")
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
