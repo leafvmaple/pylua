@@ -334,11 +334,12 @@ class Operator:
     def TESTSET(inst: Instruction, state: LuaState):
         a, b, c = inst.abc()
         if state.stack[b].get_boolean() == (c != 0):
+            # Condition matches C → skip JMP (evaluate right side, no short-circuit)
             assert type(state.call_info[-1]) is LClosure
             state.call_info[-1].pc += 1
         else:
+            # Condition doesn't match C → short-circuit: copy value and let JMP execute
             state.stack[a] = state.stack[b]
-            state.jump(1)
 
     @staticmethod
     def CALL(inst: Instruction, state: LuaState):

@@ -37,6 +37,14 @@ class Block:
     def codegen(self, info: FuncInfo):
         for stmt in self.stmts:
             stmt.codegen(info)
+        # Compile return expressions (handles return inside any block: if, while, etc.)
+        if self.ret_exprs:
+            num_rets = len(self.ret_exprs)
+            ret_reg = info.alloc_regs(num_rets)
+            for i in range(num_rets):
+                self.ret_exprs[i].codegen(info, ret_reg + i)
+            CodegenInst.ret(info, ret_reg, num_rets + 1)
+            info.free_regs(num_rets)
 
     def to_dict(self) -> dict[str, Any]:
         from .serialize import asdict
@@ -63,14 +71,8 @@ class Parser:
         info = FuncInfo()
         self.block.codegen(info)
 
-        if self.block.ret_exprs:
-            num_rets = len(self.block.ret_exprs)
-            reg = info.alloc_regs(num_rets)
-            for i in range(num_rets):
-                self.block.ret_exprs[i].codegen(info, reg + i)
-            CodegenInst.ret(info, reg, num_rets + 1)
-            info.free_regs(num_rets)
-        else:
+        # Only emit fallback RETURN if Block.codegen didn't already emit one
+        if not self.block.ret_exprs:
             CodegenInst.ret(info, 0, 1)
 
         return info

@@ -371,14 +371,21 @@ class BinaryOpExpr(Expr):
         elif self.op in ("AND", "OR"):
             self.left.codegen(info, reg)
             if self.op == "AND":
-                CodegenInst.testset(info, reg, reg, 0)  # Jump if false
+                CodegenInst.testset(info, reg, reg, 1)  # skip JMP if truthy → evaluate right
             else:  # OR
-                CodegenInst.testset(info, reg, reg, 1)  # Jump if true
+                CodegenInst.testset(info, reg, reg, 0)  # skip JMP if falsy → evaluate right
+
+            pc_jmp = info.current_pc()
+            CodegenInst.jmp(info, 0)  # placeholder JMP to skip right side
 
             right_reg = info.alloc_reg()
             self.right.codegen(info, right_reg)
             CodegenInst.move(info, reg, right_reg)
             info.free_reg()
+
+            # Patch JMP to jump past right side
+            pc_end = info.current_pc()
+            info.insts[pc_jmp].set_sbx(pc_end - pc_jmp - 1)
 
         elif self.op in ("EQ", "NE", "LT", "LE", "GT", "GE"):
             # Comparison operators - result in boolean
@@ -702,15 +709,8 @@ class FuncDefExpr(Expr):
 
         self.body.codegen(func_info)
 
-        # Generate return instruction
-        if self.body.ret_exprs:
-            num_rets = len(self.body.ret_exprs)
-            ret_reg = func_info.alloc_regs(num_rets)
-            for i in range(num_rets):
-                self.body.ret_exprs[i].codegen(func_info, ret_reg + i)
-            CodegenInst.ret(func_info, ret_reg, num_rets + 1)
-            func_info.free_regs(num_rets)
-        else:
+        # Only emit fallback RETURN if the body didn't already emit one
+        if not self.body.ret_exprs:
             CodegenInst.ret(func_info, 0, 1)
 
         func_info.exit_scope()
