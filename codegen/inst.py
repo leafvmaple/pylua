@@ -101,7 +101,7 @@ class CodegenInst:
 
     @staticmethod
     def load_nil(info: FuncInfo, a: int, n: int):
-        info.emit_abc(OP["LOADNIL"], a, n - 1, 0)
+        info.emit_abc(OP["LOADNIL"], a, a + n - 1, 0)
 
     @staticmethod
     def get_global(info: FuncInfo, a: int, bx: int):

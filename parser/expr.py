@@ -66,6 +66,7 @@ class Expr:
     def parse_prefix(lexer: Lexer) -> Expr:
         """Parse a prefix expression (identifier or parenthesized)."""
         token = lexer.current()
+        exp: Expr
         if token.type == "IDENTIFIER":
             exp = NameExpr.parse(lexer)
         elif token.type == "LPAREN":
@@ -96,6 +97,7 @@ class Expr:
     def parse_sub_expr(lexer: Lexer, limit: int) -> Expr:
         """Parse sub-expression with operator precedence climbing algorithm."""
         # Parse unary operators or simple expression
+        exp: Expr
         if lexer.current().type in ("NOT", "MINUS", "LEN", "BXOR"):
             exp = UnaryOpExpr.parse(lexer)
         else:
@@ -618,7 +620,7 @@ class FuncCallExpr(Expr):
             return []
 
     # cnt: return count
-    def codegen(self, info: FuncInfo, reg: int = -1, cnt: int = 0):
+    def codegen(self, info: FuncInfo, reg: int = -1, cnt: int = 1):
         regs_cnt = max(len(self.args) + 1, cnt)
         func_reg = info.alloc_reg() if reg == -1 else reg
         needed_regs = func_reg + regs_cnt
@@ -633,7 +635,8 @@ class FuncCallExpr(Expr):
             self.prefix_expr.codegen(info, obj_reg)
 
             key_reg = info.alloc_reg()
-            self.name_expr.codegen(info, key_reg)
+            # Method key is a literal field name, not a global variable lookup.
+            StringExpr(self.name_expr.name).codegen(info, key_reg)
 
             CodegenInst.self_(info, func_reg, obj_reg, key_reg)
             info.free_reg()
@@ -643,11 +646,12 @@ class FuncCallExpr(Expr):
 
         # Generate code for arguments
         # When an argument is a function call, it should expect 1 return value
+        arg_base = func_reg + (2 if self.name_expr else 1)
         for i, arg in enumerate(self.args):
             if isinstance(arg, FuncCallExpr):
-                arg.codegen(info, func_reg + 1 + i, cnt=1)
+                arg.codegen(info, arg_base + i, cnt=1)
             else:
-                arg.codegen(info, func_reg + 1 + i)
+                arg.codegen(info, arg_base + i)
 
         nargs = len(self.args) + (1 if self.name_expr else 0)  # +1 for self
         CodegenInst.call(info, func_reg, nargs, cnt)

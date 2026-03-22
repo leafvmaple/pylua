@@ -2,6 +2,10 @@
 name = "pylua"
 version = "0.1.0"
 description = "A Lua implementation in Python"
+requires-python = ">=3.12"
+
+[project.optional-dependencies]
+dev = ["ruff", "mypy", "pre-commit"]
 
 [tool.ruff]
 # 行长度限制（类似clang-format的column limit）
@@ -57,3 +61,22 @@ line-ending = "auto"
 # import排序配置
 combine-as-imports = true
 force-wrap-aliases = true
+
+[tool.mypy]
+# Python版本
+python_version = "3.12"
+
+# 允许逐步引入类型检查
+ignore_missing_imports = true
+
+# 对未标注函数体不强制检查，降低接入成本
+check_untyped_defs = false
+
+# 与Ruff排除目录保持一致
+exclude = [
+    "^\\.git/",
+    "^\\.venv/",
+    "^build/",
+    "^dist/",
+    "^__pycache__/",
+]

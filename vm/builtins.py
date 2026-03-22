@@ -192,7 +192,10 @@ class BUILTIN:
 
     @staticmethod
     def lua_getmetatable(state: LuaState) -> int:
-        if state.getmetatable(1) != 1:
+        # Respect protected metatables: return __metatable field when present.
+        if state.getmetafield(1, "__metatable") != 0:
+            return 1
+        if state.getmetatable(1) == 0:
             state.pushnil()
         return 1
 
@@ -202,7 +205,8 @@ class BUILTIN:
             raise RuntimeError("cannot change a protected metatable")
         state.settop(2)
         state.setmetatable(1)
-        return 0
+        state.pushvalue(state.stack[0])
+        return 1
 
     @staticmethod
     def lua_ipairsaux(state: LuaState) -> int:
@@ -230,6 +234,10 @@ class BUILTIN:
 
     @staticmethod
     def lua_next(state: LuaState) -> int:
+        if state.gettop() < 1:
+            raise RuntimeError("bad argument #1 to 'next' (table expected)")
+        if state.gettop() == 1:
+            state.pushnil()
         result = state.next(0)
         if result is not None:
             state.pushvalue(result[0])

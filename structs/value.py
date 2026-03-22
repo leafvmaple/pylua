@@ -186,11 +186,15 @@ class Value:
         return None
 
     def gettable(self, key: Value, caller: LuaCallable | None = None) -> Value | None:
+        mt: Table | None = None
         if self.is_table():
             assert isinstance(self.value, Table)
-            return self.value.gettable(key)
-
-        mt = self.get_metatable()
+            raw = self.value.gettable(key)
+            if raw is not None:
+                return raw
+            mt = self.value.getmetatable()
+        else:
+            mt = self.get_metatable()
         index = mt.get(Value.string("__index")) if mt else None
         if index:
             if index.is_function():

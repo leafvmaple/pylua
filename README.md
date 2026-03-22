@@ -46,7 +46,7 @@
 
 ## 环境要求
 
-- Python 3.10+（建议）
+- Python 3.12+（建议）
 
 ## 快速开始
 
@@ -63,6 +63,31 @@
    - `python pyluac.py -o test.luac test.lua`
 3) 运行编译后的字节码：
    - `python pylua.py test.luac`
+
+## 代码格式化与静态检查
+
+Python 生态里常用下面两类工具：
+
+- `ruff format`：自动格式化（类似 `clang-format`）
+- `ruff check` + `mypy`：静态检查（类似 `clang-tidy`）
+
+安装开发依赖：
+
+- `pip install -e ".[dev]"`
+
+常用命令：
+
+- 格式化代码：`ruff format .`
+- 检查并自动修复部分问题：`ruff check . --fix`
+- 进行类型检查：`mypy .`
+
+启用 `pre-commit`（推荐）：
+
+- 安装开发依赖：`pip install -e ".[dev]"`
+- 安装 git hooks：`pre-commit install`
+- 首次全量执行：`pre-commit run --all-files`
+
+安装后每次 `git commit` 都会自动运行格式化和检查。
 
 ## 使用示例
 

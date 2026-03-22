@@ -57,6 +57,7 @@ class FuncInfo:
     loc_vars: list[LocalVarInfo]
     loc_names: dict[str, LocalVarInfo]
     upval_names: dict[str, UpvalueInfo]
+    break_jmps_stack: list[list[int]]
 
     insts: list[Instruction]
 
@@ -69,6 +70,7 @@ class FuncInfo:
         self.loc_vars = []
         self.loc_names = {}
         self.upval_names = {}
+        self.break_jmps_stack = []
         self.insts = []
         self.constants = []
         self._const_index: dict[Const, int] = {}  # O(1) constant lookup
@@ -214,6 +216,24 @@ class FuncInfo:
     def current_pc(self) -> int:
         """Get the current program counter (instruction index)."""
         return len(self.insts)
+
+    def enter_loop(self) -> None:
+        """Begin a loop scope for tracking break jumps."""
+        self.break_jmps_stack.append([])
+
+    def emit_break_jmp(self) -> None:
+        """Record a pending break jump (latest JMP instruction)."""
+        if not self.break_jmps_stack:
+            raise SyntaxError("break statement outside loop")
+        self.break_jmps_stack[-1].append(self.current_pc() - 1)
+
+    def exit_loop(self, exit_pc: int) -> None:
+        """Patch all pending break jumps in current loop to loop exit."""
+        if not self.break_jmps_stack:
+            return
+        break_jmps = self.break_jmps_stack.pop()
+        for jmp_pc in break_jmps:
+            self.insts[jmp_pc].set_sbx(exit_pc - jmp_pc - 1)
 
     def __str__(self) -> str:
         """Generate a human-readable representation of the function info."""

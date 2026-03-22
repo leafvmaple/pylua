@@ -45,7 +45,7 @@ def run_lua(source: str) -> str:
 
 def run_lua_lines(source: str) -> list[str]:
     """Like run_lua but returns non-empty output lines."""
-    return [l for l in run_lua(source).splitlines() if l]
+    return [line for line in run_lua(source).splitlines() if line]
 
 
 # ===================================================================
@@ -90,11 +90,9 @@ class TestLiterals(unittest.TestCase):
         out = run_lua(r'print("a\nb")')
         self.assertIn("\n", out)
 
-    @unittest.skip("known bug: [[]] long strings not supported by lexer")
     def test_long_string(self):
         self.assertEqual(run_lua_lines("print([[long string]])"), ["long string"])
 
-    @unittest.skip("known bug: [[]] long strings not supported by lexer")
     def test_long_string_level(self):
         self.assertEqual(run_lua_lines("print([==[level 2]==])"), ["level 2"])
 
@@ -171,11 +169,9 @@ class TestComparison(unittest.TestCase):
     def test_greater_equal(self):
         self.assertEqual(run_lua_lines("print(3 >= 2)"), ["true"])
 
-    @unittest.skip("known bug: string == comparison raises AssertionError")
     def test_string_equality(self):
         self.assertEqual(run_lua_lines('print("abc" == "abc")'), ["true"])
 
-    @unittest.skip("known bug: string ~= comparison raises AssertionError")
     def test_string_inequality(self):
         self.assertEqual(run_lua_lines('print("abc" ~= "xyz")'), ["true"])
 
@@ -257,7 +253,6 @@ class TestStringOps(unittest.TestCase):
     def test_empty_length(self):
         self.assertEqual(run_lua_lines('print(#"")'), ["0"])
 
-    @unittest.skip("known bug: [[]] long strings not supported by lexer")
     def test_multiline_string(self):
         out = run_lua_lines("print([[line1\nline2]])")
         # Should contain both lines
@@ -427,7 +422,6 @@ class TestWhileLoop(unittest.TestCase):
         """)
         self.assertEqual(out, [])
 
-    @unittest.skip("known bug: break generates placeholder JMP — causes infinite loop")
     def test_while_with_break(self):
         out = run_lua_lines("""
             local i = 1
@@ -681,7 +675,6 @@ class TestFunctions(unittest.TestCase):
         """)
         self.assertEqual(out, ["1\tnil\tnil"])
 
-    @unittest.skip("known bug: anonymous function passed as argument can't be called")
     def test_function_as_argument(self):
         out = run_lua_lines("""
             function apply(f, x)
@@ -691,9 +684,6 @@ class TestFunctions(unittest.TestCase):
         """)
         self.assertEqual(out, ["25"])
 
-    @unittest.skip(
-        "known bug: nested function definition returns function ref instead of call result"
-    )
     def test_nested_function(self):
         out = run_lua_lines("""
             function outer()
@@ -916,7 +906,6 @@ class TestTables(unittest.TestCase):
         """)
         self.assertEqual(out, ["nil"])
 
-    @unittest.skip("known bug: setting table element to nil doesn't remove it")
     def test_table_set_nil_remove(self):
         out = run_lua_lines("""
             local t = {1, 2, 3}
@@ -945,7 +934,6 @@ class TestTables(unittest.TestCase):
 
 
 class TestMethods(unittest.TestCase):
-    @unittest.skip("known bug: method (colon) calls don't pass self correctly")
     def test_method_definition_and_call(self):
         out = run_lua_lines("""
             local obj = {value = 10}
@@ -956,7 +944,6 @@ class TestMethods(unittest.TestCase):
         """)
         self.assertEqual(out, ["10"])
 
-    @unittest.skip("known bug: method (colon) calls don't pass self correctly")
     def test_method_with_args(self):
         out = run_lua_lines("""
             local obj = {x = 0}
@@ -969,7 +956,6 @@ class TestMethods(unittest.TestCase):
         """)
         self.assertEqual(out, ["8"])
 
-    @unittest.skip("known bug: method (colon) calls don't pass self correctly")
     def test_method_chaining_style(self):
         out = run_lua_lines("""
             local obj = {val = 0}
@@ -991,7 +977,6 @@ class TestMethods(unittest.TestCase):
 
 
 class TestMetatables(unittest.TestCase):
-    @unittest.skip("known bug: __index metamethod lookup doesn't fire")
     def test_index_metamethod(self):
         out = run_lua_lines("""
             local defaults = {color = "red", size = 10}
@@ -1001,7 +986,6 @@ class TestMetatables(unittest.TestCase):
         """)
         self.assertEqual(out, ["red\t10"])
 
-    @unittest.skip("known bug: __index function metamethod doesn't fire")
     def test_index_function_metamethod(self):
         out = run_lua_lines("""
             local t = {}
@@ -1014,7 +998,6 @@ class TestMetatables(unittest.TestCase):
         """)
         self.assertEqual(out, ["hello!"])
 
-    @unittest.skip("known bug: __newindex metamethod doesn't fire")
     def test_newindex_metamethod(self):
         out = run_lua_lines("""
             local log = {}
@@ -1066,7 +1049,6 @@ class TestMetatables(unittest.TestCase):
         """)
         self.assertEqual(out, ["25"])
 
-    @unittest.skip("known bug: __eq metamethod doesn't fire correctly")
     def test_eq_metamethod(self):
         out = run_lua_lines("""
             local mt = {
@@ -1080,7 +1062,6 @@ class TestMetatables(unittest.TestCase):
         """)
         self.assertEqual(out, ["true"])
 
-    @unittest.skip("known bug: getmetatable equality check fails")
     def test_getmetatable(self):
         out = run_lua_lines("""
             local mt = {}
@@ -1089,7 +1070,6 @@ class TestMetatables(unittest.TestCase):
         """)
         self.assertEqual(out, ["true"])
 
-    @unittest.skip("known bug: __metatable field not respected")
     def test_metatable_protection(self):
         out = run_lua_lines("""
             local t = setmetatable({}, {__metatable = "protected"})
@@ -1245,7 +1225,7 @@ class TestBuiltins(unittest.TestCase):
         self.assertIn("42", out[0])
 
     def test_assert_fail(self):
-        with self.assertRaises(Exception):
+        with self.assertRaisesRegex(RuntimeError, "failed!"):
             run_lua('assert(false, "failed!")')
 
     def test_rawequal(self):
@@ -1267,7 +1247,6 @@ class TestBuiltins(unittest.TestCase):
         """)
         self.assertEqual(out, ["3"])
 
-    @unittest.skip("known bug: next() returns nil instead of first key-value pair")
     def test_next(self):
         out = run_lua_lines("""
             local t = {10, 20, 30}
@@ -1294,7 +1273,6 @@ class TestBuiltins(unittest.TestCase):
         out = run_lua("print(1, 2, 3)")
         self.assertEqual(out.strip(), "1\t2\t3")
 
-    @unittest.skip("known bug: pcall/error don't return proper result values")
     def test_error_and_pcall(self):
         out = run_lua_lines("""
             local ok, err = pcall(function()
@@ -1639,7 +1617,6 @@ class TestAlgorithms(unittest.TestCase):
         """)
         self.assertEqual(out, ["item1, item2, item3, item4, item5"])
 
-    @unittest.skip("known bug: while + comparison on table fields fails")
     def test_linked_list(self):
         out = run_lua_lines("""
             function newNode(val, next)
@@ -1679,7 +1656,6 @@ class TestAlgorithms(unittest.TestCase):
         """)
         self.assertEqual(out, ["60"])
 
-    @unittest.skip("known bug: function passed as argument returns function ref instead of result")
     def test_map_function(self):
         out = run_lua_lines("""
             function map(t, f)
@@ -1697,7 +1673,6 @@ class TestAlgorithms(unittest.TestCase):
         """)
         self.assertEqual(out, ["1", "4", "9", "16", "25"])
 
-    @unittest.skip("known bug: closure predicate in filter doesn't work (function arg bug)")
     def test_filter_function(self):
         out = run_lua_lines("""
             function filter(t, pred)
@@ -1719,7 +1694,6 @@ class TestAlgorithms(unittest.TestCase):
         """)
         self.assertEqual(out, ["2", "4", "6", "8", "10"])
 
-    @unittest.skip("known bug: closure in reduce doesn't work (function arg bug)")
     def test_reduce_function(self):
         out = run_lua_lines("""
             function reduce(t, f, init)
@@ -1742,7 +1716,6 @@ class TestAlgorithms(unittest.TestCase):
 
 
 class TestComplexControlFlow(unittest.TestCase):
-    @unittest.skip("known bug: break generates placeholder JMP — causes infinite loop")
     def test_nested_loops_with_break(self):
         out = run_lua_lines("""
             local result = 0
@@ -1787,7 +1760,6 @@ class TestComplexControlFlow(unittest.TestCase):
         """)
         self.assertEqual(out, ["1 2 fizz 4 buzz fizz 7 8 fizz buzz"])
 
-    @unittest.skip("known bug: function return with comparisons yields false/nil")
     def test_early_return(self):
         out = run_lua_lines("""
             function find(t, val)
@@ -1842,7 +1814,6 @@ class TestComplexControlFlow(unittest.TestCase):
 
 
 class TestTableIteration(unittest.TestCase):
-    @unittest.skip("known bug: next() with manual iteration broken")
     def test_manual_table_iteration(self):
         out = run_lua_lines("""
             local t = {10, 20, 30}
@@ -1919,7 +1890,6 @@ class TestMultipleReturns(unittest.TestCase):
         """)
         self.assertEqual(out, ["1"])
 
-    @unittest.skip("known bug: multi-return in expression context broken")
     def test_multi_return_in_expression(self):
         out = run_lua_lines("""
             function multi() return 10, 20, 30 end
@@ -1989,7 +1959,6 @@ class TestScopingEdgeCases(unittest.TestCase):
 
 
 class TestErrorHandling(unittest.TestCase):
-    @unittest.skip("known bug: pcall doesn't return proper error result")
     def test_pcall_catches_runtime_error(self):
         out = run_lua_lines("""
             local ok, msg = pcall(function()
@@ -2001,7 +1970,6 @@ class TestErrorHandling(unittest.TestCase):
         """)
         self.assertEqual(out[0], "false")
 
-    @unittest.skip("known bug: pcall nested doesn't return proper result")
     def test_pcall_nested(self):
         out = run_lua_lines("""
             local ok1, result = pcall(function()
@@ -2014,7 +1982,6 @@ class TestErrorHandling(unittest.TestCase):
         """)
         self.assertEqual(out, ["true\tfalse"])
 
-    @unittest.skip("known bug: pcall/error don't return proper result values")
     def test_error_with_number(self):
         out = run_lua_lines("""
             local ok, err = pcall(function()
@@ -2157,7 +2124,6 @@ class TestFirstClassFunctions(unittest.TestCase):
 
 
 class TestSelfOpcode(unittest.TestCase):
-    @unittest.skip("known bug: method (colon) calls don't pass self correctly")
     def test_self_basic(self):
         out = run_lua_lines("""
             local t = {
@@ -2168,7 +2134,6 @@ class TestSelfOpcode(unittest.TestCase):
         """)
         self.assertEqual(out, ["10"])
 
-    @unittest.skip("known bug: method (colon) calls don't pass self correctly")
     def test_self_with_arguments(self):
         out = run_lua_lines("""
             local calc = {val = 0}

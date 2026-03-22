@@ -122,6 +122,14 @@ class Lexer:
         if char in ('"', "'"):
             return self.read_string()
 
+        if char == "[":
+            level = self._check_long_bracket()
+            if level >= 0:
+                value = self._scan_long_string(level)
+                if value.startswith("\n"):
+                    value = value[1:]
+                return Token("STRING", value, self._line)
+
         # Operators that may form multi-character tokens
         if char == "-":
             return self._scan_minus()

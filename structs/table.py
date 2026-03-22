@@ -43,6 +43,8 @@ class Table:
             if int_key is not None:
                 if 1 <= int_key <= len(self._list):
                     self._shrink_list(int_key)
+                elif int_key in self._map:
+                    del self._map[int_key]
             elif key in self._map:
                 del self._map[key]
         else:
@@ -98,6 +100,8 @@ class Table:
         return self._metatable
 
     def _shrink_list(self, key: int):
+        # Remove any stale hash entry for the removed integer key.
+        self._map.pop(key, None)
         for lua_idx in range(key + 1, len(self._list) + 1):
             self._map[lua_idx] = self._list[lua_idx - 1]
         self._list = self._list[: key - 1]

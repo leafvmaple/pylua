@@ -116,9 +116,9 @@ class BreakStmt(Stmt):
         return cls(token.line)
 
     def codegen(self, info: FuncInfo):
-        # TODO: Implement break - needs loop context to know where to jump
-        # For now, just emit a JMP instruction with placeholder offset
+        # Emit placeholder JMP and let enclosing loop patch it to loop end.
         CodegenInst.jmp(info, 0)
+        info.emit_break_jmp()
 
 
 class ReturnStmt(Stmt):
@@ -137,9 +137,8 @@ class FuncCallStmt(Stmt):
         self.func_call = func_call
 
     def codegen(self, info: FuncInfo):
-        # FuncCallExpr.codegen already handles register allocation/deallocation
-        # when reg == -1 (default), so we don't need to free_reg here
-        self.func_call.codegen(info)
+        # Statement-level call ignores return values.
+        self.func_call.codegen(info, cnt=0)
 
 
 # ============================================================================
@@ -207,6 +206,7 @@ class WhileStmt(Stmt):
         info.free_reg()
 
         # Loop body
+        info.enter_loop()
         info.enter_scope()
         self.block.codegen(info)
         info.exit_scope()
@@ -216,6 +216,7 @@ class WhileStmt(Stmt):
         # Patch the exit jump
         pc_end = info.current_pc()
         info.insts[pc_jmp].set_sbx(pc_end - pc_jmp - 1)
+        info.exit_loop(pc_end)
 
 
 class RepeatStmt(Stmt):
@@ -242,6 +243,7 @@ class RepeatStmt(Stmt):
         start_pc = info.current_pc()
 
         # Loop body
+        info.enter_loop()
         info.enter_scope()
         self.block.codegen(info)
 
@@ -256,6 +258,7 @@ class RepeatStmt(Stmt):
         CodegenInst.jmp(info, start_pc - info.current_pc() - 1)
 
         info.free_reg()
+        info.exit_loop(info.current_pc())
 
 
 class IfStmt(Stmt):
@@ -401,6 +404,7 @@ class ForNumStat(Stmt):
 
     def codegen(self, info: FuncInfo):
         info.enter_scope()
+        info.enter_loop()
 
         # Allocate registers for loop variables: index, limit, step
         idx_reg = info.alloc_reg()
@@ -433,6 +437,7 @@ class ForNumStat(Stmt):
         CodegenInst.forloop(info, idx_reg, -offset)
         info.insts[pc_forprep].set_sbx(offset - 1)
 
+        info.exit_loop(info.current_pc())
         info.exit_scope()
 
 
@@ -468,6 +473,7 @@ class ForInStat(Stmt):
 
     def codegen(self, info: FuncInfo):
         info.enter_scope()
+        info.enter_loop()
 
         reg = info.used_regs
 
@@ -500,6 +506,7 @@ class ForInStat(Stmt):
 
         # info.free_reg()
 
+        info.exit_loop(info.current_pc())
         info.exit_scope()
 
 
@@ -583,7 +590,7 @@ class AssignStmt(Stmt):
     def parse_func(cls, lexer: Lexer) -> AssignStmt:
         """function [obj.]name[:method] body end"""
         lexer.consume("FUNCTION")
-        exp = NameExpr.parse(lexer)
+        exp: Expr = NameExpr.parse(lexer)
 
         while lexer.current().type == "DOT":
             exp = TableAccessExpr.parse_dot(lexer, exp)
@@ -601,14 +608,22 @@ class AssignStmt(Stmt):
         num_vars = len(self.var_list)
 
         exp_regs: list[int] = []
-        for i in range(num_exprs):
+        for i, expr in enumerate(self.expr_list):
             reg = info.alloc_reg()
-            self.expr_list[i].codegen(info, reg)
-            exp_regs.append(reg)
+            if i == num_exprs - 1 and isinstance(expr, FuncCallExpr):
+                # Lua expands only the last function call in assignment context.
+                want = max(1, num_vars - i)
+                for _ in range(want - 1):
+                    info.alloc_reg()
+                expr.codegen(info, reg, want)
+                exp_regs.extend(range(reg, reg + want))
+            else:
+                expr.codegen(info, reg)
+                exp_regs.append(reg)
 
         for i in range(num_vars):
             var = self.var_list[i]
-            if i < num_exprs:
+            if i < len(exp_regs):
                 val_reg = exp_regs[i]
             else:
                 val_reg = info.alloc_reg()

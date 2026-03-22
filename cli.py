@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import argparse
 import sys
-from parser.block import Parser
-from parser.lexer import Lexer
 from pathlib import Path
 
 from binary.header import Header
 from binary.io import Reader
 from binary.reader import read_header, read_proto
 from binary.writer import write_bytecode
+from parser.block import Parser
+from parser.lexer import Lexer
 from structs.function import Proto
 from vm.state import LuaState
 

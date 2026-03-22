@@ -85,21 +85,44 @@ class BinaryOperator:
         self.meta = meta
         self.check = check
 
-    def solve(self, state: LuaState, a: int, b: int) -> Value | bool:
-        va = state.get_rk(a)
-        vb = state.get_rk(b)
+    def _solve_compare(self, va: Value, vb: Value) -> Value | None:
+        # __eq has a raw fast path for same-type equal values.
+        if self.meta == "__eq" and va.type_name() == vb.type_name() and va == vb:
+            return Value.boolean(True)
+        if self.check.checks(va, vb):
+            return Value.boolean(bool(self.op(va.value, vb.value)))
+        return None
+
+    def _solve_arith(self, va: Value, vb: Value) -> Value | None:
+        if not self.check.checks(va, vb):
+            return None
+        assert isinstance(va.value, (int, float)) and isinstance(vb.value, (int, float))
+        return Value.number(self.op(va.value, vb.value))
+
+    def _call_metamethod(self, state: LuaState, va: Value, vb: Value) -> Value | None:
         mt = va.get_metatable()
         if mt is None:
             mt = vb.get_metatable()
-        if self.check.checks(va, vb):
-            assert isinstance(va.value, (int, float)) and isinstance(vb.value, (int, float))
-            return Value.number(self.op(va.value, vb.value))
-        else:
-            if mt:
-                meta_func = mt.get(Value.string(self.meta))
-                if meta_func and meta_func.is_function():
-                    assert type(meta_func.value) is LClosure
-                    return state.lua_call(meta_func.value, va, vb)
+        if not mt:
+            return None
+        meta_func = mt.get(Value.string(self.meta))
+        if meta_func and meta_func.is_function():
+            assert type(meta_func.value) is LClosure
+            return state.lua_call(meta_func.value, va, vb)
+        return None
+
+    def solve(self, state: LuaState, a: int, b: int) -> Value | bool:
+        va = state.get_rk(a)
+        vb = state.get_rk(b)
+        direct = (
+            self._solve_compare(va, vb) if self.check is CompareCheck else self._solve_arith(va, vb)
+        )
+        if direct is not None:
+            return direct
+
+        meta_res = self._call_metamethod(state, va, vb)
+        if meta_res is not None:
+            return meta_res
         return False
 
     def arith(self, state: LuaState, idx: int, a: int, b: int):
@@ -216,6 +239,20 @@ class Operator:
         value = state.get_rk(c)
         if table_value.is_table():
             assert isinstance(table_value.value, Table)
+            existing = table_value.value.get(key)
+            mt = table_value.get_metatable()
+            if existing is not None or mt is None:
+                table_value.value.set(key, value)
+                return
+            new_index = mt.get(Value.string("__newindex"))
+            if new_index and new_index.is_function():
+                assert type(new_index.value) is LClosure
+                state.lua_call(new_index.value, table_value, key, value)
+                return
+            if new_index and new_index.is_table():
+                assert isinstance(new_index.value, Table)
+                new_index.value.set(key, value)
+                return
             table_value.value.set(key, value)
         else:
             # Try __newindex meta method

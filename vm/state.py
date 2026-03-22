@@ -190,27 +190,25 @@ class LuaState:
                 self.py_call(func_value.value, idx, nargs, num_rets)
         elif func_value.is_table():
             mt = func_value.get_metatable()
-            func_value = mt.get(Value("__call")) if mt else None
-            if func_value and func_value.is_function():
-                assert type(func_value.value) is LClosure
+            callable_value = mt.get(Value("__call")) if mt else None
+            if callable_value and callable_value.is_function():
+                assert type(callable_value.value) is LClosure
                 self.stack[idx] = self.lua_call(
-                    func_value.value, *self.stack[idx : idx + nargs + 1]
+                    callable_value.value, *self.stack[idx : idx + nargs + 1]
                 )
         else:
             raise TypeError(f"attempt to call a {func_value.type_name()} value")
 
     def pcall(self, idx: int, nargs: int, num_rets: int) -> int:
         ci_len = len(self.call_info)
-        saved_stack = self.stack[:]
         saved_func = self.func
         try:
             self.call(idx, nargs, num_rets)
         except Exception as e:
             while len(self.call_info) > ci_len:
                 self.pop_closure()
-            # Restore to saved state instead of clearing
-            self.stack = saved_stack
             self.func = saved_func
+            # Keep current frame's stack object; replace contents with error only.
             self.stack.clear()
             self.pushvalue(Value.string(str(e)))
             if isinstance(e, RuntimeError):
