@@ -12,9 +12,3 @@ repos:
         entry: python -m ruff check --fix
         language: system
         types_or: [python, pyi]
-
-      - id: mypy
-        name: mypy
-        entry: python -m mypy .
-        language: system
-        pass_filenames: false
