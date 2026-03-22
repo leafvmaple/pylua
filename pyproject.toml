@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "pylua"
 version = "0.1.0"
@@ -80,3 +84,7 @@ exclude = [
     "^dist/",
     "^__pycache__/",
 ]
+
+[tool.setuptools]
+packages = ["binary", "codegen", "parser", "structs", "vm"]
+py-modules = ["cli", "pylua", "pyluac"]
