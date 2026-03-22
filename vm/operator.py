@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from structs.function import LClosure
 from structs.instruction import Instruction
@@ -38,7 +38,9 @@ class CompareCheck(LuaCheckable):
 
 
 type UnaryFuncType = Callable[[int | float | bool], int | float | bool]
-type BinaryFuncType = Callable[[int | float, int | float], int | float]
+type ArithFuncType = Callable[[int | float, int | float], int | float]
+type CompareFuncType = Callable[[int | float | str, int | float | str], bool]
+type BinaryFuncType = ArithFuncType | CompareFuncType
 
 
 class UnaryOperator:
@@ -89,15 +91,20 @@ class BinaryOperator:
         # __eq has a raw fast path for same-type equal values.
         if self.meta == "__eq" and va.type_name() == vb.type_name() and va == vb:
             return Value.boolean(True)
-        if self.check.checks(va, vb):
-            return Value.boolean(bool(self.op(va.value, vb.value)))
+        if not self.check.checks(va, vb):
+            return None
+
+        compare_op = cast(CompareFuncType, self.op)
+        if isinstance(va.value, (int, float, str)) and isinstance(vb.value, (int, float, str)):
+            return Value.boolean(compare_op(va.value, vb.value))
         return None
 
     def _solve_arith(self, va: Value, vb: Value) -> Value | None:
         if not self.check.checks(va, vb):
             return None
         assert isinstance(va.value, (int, float)) and isinstance(vb.value, (int, float))
-        return Value.number(self.op(va.value, vb.value))
+        arith_op = cast(ArithFuncType, self.op)
+        return Value.number(arith_op(va.value, vb.value))
 
     def _call_metamethod(self, state: LuaState, va: Value, vb: Value) -> Value | None:
         mt = va.get_metatable()
