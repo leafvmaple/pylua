@@ -723,3 +723,12 @@ class FuncDefExpr(Expr):
         info.sub_funcs.append(func_info)
 
         CodegenInst.closure(info, reg, idx)
+        # Emit one pseudo-instruction per upvalue so the VM's CLOSURE handler can
+        # bind them: MOVE captures a parent local, GETUPVAL chains a parent
+        # upvalue. Order must match the upvalue indices.
+        for upval in sorted(func_info.upval_names.values(), key=lambda u: u.idx):
+            if upval.loc_idx is not None:
+                CodegenInst.move(info, 0, upval.loc_idx)
+            else:
+                assert upval.upval_idx is not None
+                CodegenInst.get_upval(info, 0, upval.upval_idx)

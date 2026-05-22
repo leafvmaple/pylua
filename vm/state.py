@@ -26,8 +26,6 @@ LUA_ERR_ERR = 5
 
 class LuaState:
     call_info: list[LClosure | PClosure]
-    func: Proto
-    stack: list[Value]
     registry: Table
     globals: Table
 
@@ -42,9 +40,7 @@ class LuaState:
         self.globals = Table()
         self.registry.set(key, Value.table(self.globals))
         self.mt = Table()
-        self.call_info = [call_info]  # Pass Value as factory
-        self.func = call_info.func
-        self.stack = call_info.stack
+        self.call_info = [call_info]
 
         # Register built-in functions
         self.register("print", BUILTIN.lua_print)
@@ -66,6 +62,18 @@ class LuaState:
         self.register("error", BUILTIN.lua_error)
         self.register("pcall", BUILTIN.lua_pcall)
 
+    @property
+    def stack(self) -> list[Value]:
+        """Registers of the currently executing frame."""
+        return self.call_info[-1].stack
+
+    @property
+    def func(self) -> Proto:
+        """Prototype of the currently executing Lua frame."""
+        frame = self.call_info[-1]
+        assert type(frame) is LClosure
+        return frame.func
+
     def get_global(self, name: str) -> Value:
         key = Value.string(name)
         value = self.globals.get(key)
@@ -74,23 +82,6 @@ class LuaState:
     def set_global(self, name: str, value: Value):
         key = Value.string(name)
         self.globals.set(key, value)
-
-    def push_closure(self, closure: LClosure | PClosure):
-        self.call_info.append(closure)
-        if type(closure) is LClosure:
-            self.func = closure.func
-        # Always switch to closure's stack, regardless of type
-        self.stack = closure.stack
-
-    def pop_closure(self) -> LClosure | PClosure:
-        frame = self.call_info.pop()
-        if self.call_info:
-            call_info = self.call_info[-1]
-            if type(call_info) is LClosure:
-                self.func = call_info.func
-            # Always restore stack from the current call_info
-            self.stack = call_info.stack
-        return frame
 
     def register(self, name: str, func: PyFunction):
         self.globals.set(Value.string(name), Value.closure(PClosure(func)))
@@ -180,14 +171,28 @@ class LuaState:
         return t.len(self.lua_call)
 
     def call(self, idx: int, nargs: int, num_rets: int):
+        """Call the value at `idx` and run it to completion synchronously.
+
+        Used by callers that need results immediately (metamethods via
+        lua_call, the generic-for iterator, pcall). Pure Lua-to-Lua calls go
+        through the CALL opcode and `precall`, which keep the dispatch loop flat
+        instead of recursing in Python.
+        """
+        base = len(self.call_info)
+        self.precall(idx, nargs, num_rets)
+        if len(self.call_info) > base:
+            self._dispatch_until(base)
+
+    def precall(self, idx: int, nargs: int, num_rets: int):
+        """Begin a call. Lua closures push a fresh frame and return so the
+        active dispatch loop continues into it (no Python recursion). Python
+        closures run inline."""
         func_value = self.stack[idx]
         if func_value.is_function():
             if type(func_value.value) is LClosure:
-                self.pre_call(func_value.value, idx, nargs, num_rets)
-                while self.execute():
-                    pass
+                self._precall_lua(func_value.value, idx, nargs, num_rets)
             elif type(func_value.value) is PClosure:
-                self.py_call(func_value.value, idx, nargs, num_rets)
+                self._precall_py(func_value.value, idx, nargs, num_rets)
         elif func_value.is_table():
             mt = func_value.get_metatable()
             callable_value = mt.get(Value("__call")) if mt else None
@@ -199,15 +204,63 @@ class LuaState:
         else:
             raise TypeError(f"attempt to call a {func_value.type_name()} value")
 
+    def _precall_lua(self, closure: LClosure, func_idx: int, nargs: int, num_rets: int):
+        proto = closure.func
+        # A fresh activation record so recursive calls don't share registers.
+        # Captured upvalues are shared with the prototype closure.
+        frame = LClosure(proto)
+        frame.upvalues = closure.upvalues
+        frame.num_rets = num_rets
+        frame.ret_idx = func_idx
+
+        caller_stack = self.stack
+        for i in range(nargs):
+            value = caller_stack[func_idx + 1 + i]
+            if i < proto.num_params:
+                frame.stack[i] = value
+            else:
+                frame.varargs.append(value)
+
+        self.call_info.append(frame)
+
+    def _precall_py(self, closure: PClosure, func_idx: int, nargs: int, num_rets: int):
+        caller_stack = self.stack
+        frame = PClosure(closure.func)
+        frame.stack = [caller_stack[func_idx + 1 + i] for i in range(nargs)]
+
+        self.call_info.append(frame)
+        ret_count = closure.func(self)
+        self.call_info.pop()
+
+        ret_start = len(frame.stack) - ret_count
+        for i in range(num_rets):
+            ret_value = frame.stack[ret_start + i] if i < ret_count else Value.nil()
+            caller_stack[func_idx + i] = ret_value
+
+    def postcall(self, ret_start: int, ret_count: int):
+        """Pop the current Lua frame and copy its results into the caller."""
+        frame = self.call_info.pop()
+        assert type(frame) is LClosure
+
+        if ret_count == -1:
+            ret_count = len(frame.stack) - ret_start
+        num_rets = ret_count if frame.num_rets == -1 else frame.num_rets
+
+        if not self.call_info:
+            return  # main chunk returned; no caller to receive results
+
+        caller_stack = self.stack
+        for i in range(num_rets):
+            ret_value = frame.stack[ret_start + i] if i < ret_count else Value.nil()
+            caller_stack[frame.ret_idx + i] = ret_value
+
     def pcall(self, idx: int, nargs: int, num_rets: int) -> int:
-        ci_len = len(self.call_info)
-        saved_func = self.func
+        base = len(self.call_info)
         try:
             self.call(idx, nargs, num_rets)
         except Exception as e:
-            while len(self.call_info) > ci_len:
-                self.pop_closure()
-            self.func = saved_func
+            while len(self.call_info) > base:
+                self.call_info.pop()
             # Keep current frame's stack object; replace contents with error only.
             self.stack.clear()
             self.pushvalue(Value.string(str(e)))
@@ -226,76 +279,28 @@ class LuaState:
         raise RuntimeError(value.value)
 
     def run(self):
-        """Top-level execution loop. Runs until all instructions are consumed."""
-        while True:
-            inst = self.fetch()
+        """Top-level execution loop: run the main chunk to completion."""
+        self._dispatch_until(0)
+
+    def _dispatch_until(self, base: int):
+        """Drive the dispatch loop until `call_info` shrinks back to `base`.
+
+        A single loop services arbitrarily deep Lua call chains because CALL
+        pushes frames and RETURN pops them — recursion depth is bounded by
+        memory, not by the Python call stack.
+        """
+        while len(self.call_info) > base:
+            frame = self.call_info[-1]
+            if type(frame) is not LClosure:
+                break  # defensive: Python frames run inline and never linger here
+            inst = frame.fetch()
             if inst is None:
-                break
-            op_name = inst.op_name()
-            method = DISPATCH_TABLE.get(op_name)
-            if method:
-                method(inst, self)
-            else:
-                raise RuntimeError(f"unknown opcode: {op_name}")
-
-    def execute(self) -> bool:
-        """Execute a single instruction. Used for nested calls (stops on RETURN)."""
-        inst = self.fetch()
-        if inst is None:
-            return False
-        op_name = inst.op_name()
-        method = DISPATCH_TABLE.get(op_name)
-        if method:
+                self.postcall(0, 0)  # ran off the end without RETURN
+                continue
+            method = DISPATCH_TABLE.get(inst.op_name())
+            if method is None:
+                raise RuntimeError(f"unknown opcode: {inst.op_name()}")
             method(inst, self)
-        else:
-            raise RuntimeError(f"unknown opcode: {op_name}")
-        return op_name != "RETURN"
-
-    def pre_call(self, closure: LClosure, func_idx: int = 0, nargs: int = 0, num_rets: int = 0):
-        closure.stack = [Value.nil()] * closure.func.max_stack_size
-        closure.pc = 0
-        closure.varargs = []
-        for i in range(nargs):
-            value = self.stack[func_idx + 1 + i]
-            if i < closure.func.num_params:
-                closure.stack[i] = value
-            else:
-                closure.varargs.append(value)
-
-        closure.num_rets = num_rets
-        closure.ret_idx = func_idx
-        self.push_closure(closure)
-
-    def py_call(self, closure: PClosure, func_idx: int = 0, args_count: int = 0, num_rets: int = 0):
-        closure.stack = []
-        for i in range(args_count):
-            value = self.stack[func_idx + 1 + i]
-            closure.stack.append(value)
-
-        self.push_closure(closure)
-        ret_count = closure.func(self)
-        self.pop_closure()
-
-        ret_start = len(closure.stack) - ret_count
-
-        for i in range(num_rets):
-            ret_value = closure.stack[ret_start + i] if i < ret_count else Value.nil()
-            self.stack[func_idx + i] = ret_value
-
-    def pos_call(self, ret_start: int, ret_count: int = 0):
-        closure = self.pop_closure()
-        assert type(closure) is LClosure
-
-        # Handle return values
-        if ret_count == -1:
-            ret_count = len(closure.stack) - ret_start
-
-        if closure.num_rets == -1:
-            closure.num_rets = ret_count
-
-        for i in range(closure.num_rets):
-            ret_value = closure.stack[ret_start + i] if i < ret_count else Value.nil()
-            self.stack[closure.ret_idx + i] = ret_value
 
     def next(self, idx: int) -> tuple[Value, Value] | None:
         table = self.stack[idx]

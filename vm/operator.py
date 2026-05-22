@@ -199,10 +199,8 @@ class Operator:
     def GETUPVAL(inst: Instruction, state: LuaState):
         a, b, _ = inst.abc()
         closure = state.call_info[-1]
-        if b < len(closure.upvalues):
-            state.stack[a] = closure.upvalues[b]
-        else:
-            state.stack[a] = Value.nil()
+        assert type(closure) is LClosure
+        state.stack[a] = closure.upvalues[b].get()
 
     @staticmethod
     def GETGLOBAL(inst: Instruction, state: LuaState):
@@ -233,10 +231,8 @@ class Operator:
     def SETUPVAL(inst: Instruction, state: LuaState):
         a, b, _ = inst.abc()
         closure = state.call_info[-1]
-        if b < len(closure.upvalues):
-            closure.upvalues[b] = state.stack[a]
-        else:
-            raise IndexError(f"upvalue index {b} out of range (max {len(closure.upvalues)})")
+        assert type(closure) is LClosure
+        closure.upvalues[b].set(state.stack[a])
 
     @staticmethod
     def SETTABLE(inst: Instruction, state: LuaState):
@@ -390,19 +386,22 @@ class Operator:
         a, b, c = inst.abc()
         nargs = b - 1 if b != 0 else len(state.stack) - a - 1
         num_rets = c - 1
-        state.call(a, nargs, num_rets)
+        # Push the callee's frame (or run a Python builtin inline) and let the
+        # active dispatch loop step into it — keeps Lua recursion off the
+        # Python stack.
+        state.precall(a, nargs, num_rets)
 
     @staticmethod
     def TAILCALL(inst: Instruction, state: LuaState):
         a, b, _ = inst.abc()
         nargs = b - 1 if b != 0 else len(state.stack) - a - 1
-        state.call(a, nargs, -1)
+        state.precall(a, nargs, -1)
 
     @staticmethod
     def RETURN(inst: Instruction, state: LuaState):
         a, b, _ = inst.abc()
         ret_count = b - 1 if b != 0 else len(state.stack) - a
-        state.pos_call(a, ret_count)
+        state.postcall(a, ret_count)
 
     @staticmethod
     def FORLOOP(inst: Instruction, state: LuaState):
@@ -467,7 +466,26 @@ class Operator:
     def CLOSURE(inst: Instruction, state: LuaState):
         a, bx = inst.abx()
         proto = state.func.protos[bx]
+        parent = state.call_info[-1]
+        assert type(parent) is LClosure
         closure = LClosure.from_proto(proto)
+        # Each CLOSURE is followed by num_upvalues pseudo-instructions describing
+        # how to capture each upvalue: MOVE b → parent local register b,
+        # GETUPVAL b → parent upvalue b. Consume them here.
+        upvalues = []
+        for _ in range(proto.num_upvalues):
+            pseudo = parent.fetch()
+            assert type(pseudo) is Instruction
+            _, src, _ = pseudo.abc()
+            if pseudo.op_name() == "MOVE":
+                upvalues.append(parent.find_upval(src))
+            elif pseudo.op_name() == "GETUPVAL":
+                upvalues.append(parent.upvalues[src])
+            else:
+                raise RuntimeError(
+                    f"unexpected pseudo-instruction after CLOSURE: {pseudo.op_name()}"
+                )
+        closure.upvalues = upvalues
         state.stack[a] = Value.closure(closure)
 
     @staticmethod

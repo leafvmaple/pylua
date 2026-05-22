@@ -87,14 +87,38 @@ class Proto:
         return "\n" + "\n".join(parts)
 
 
+class Upvalue:
+    """A captured variable shared between closures.
+
+    Holds a reference to a frame's register list plus an index, so reads and
+    writes through the upvalue stay in sync with the owning frame (and with any
+    sibling closures that captured the same variable). Frame register lists are
+    allocated fresh per activation and outlive the frame via this reference, so
+    no explicit "close" step is required in this VM.
+    """
+
+    __slots__ = ("stack", "index")
+
+    def __init__(self, stack: list[Value], index: int):
+        self.stack = stack
+        self.index = index
+
+    def get(self) -> Value:
+        return self.stack[self.index]
+
+    def set(self, value: Value) -> None:
+        self.stack[self.index] = value
+
+
 class Closure:
     stack: list[Value]
-    upvalues: list[Value]
 
 
 class LClosure(Closure):
     varargs: list[Value]
     func: Proto
+    upvalues: list[Upvalue]  # captured variables, filled by the CLOSURE opcode
+    open_upvals: dict[int, Upvalue]  # this activation's locals captured by children
     num_rets: int  # number of expected return values
     ret_idx: int
     pc: int
@@ -103,16 +127,26 @@ class LClosure(Closure):
         from structs.value import Value
 
         self.stack = [Value.nil()] * func.max_stack_size
-        self.upvalues = [Value.nil()] * func.num_upvalues
-        # Initialize upvalues based on function prototype
+        self.upvalues = []
+        self.open_upvals = {}
         self.varargs = []
         self.func = func
         self.num_rets = 0
+        self.ret_idx = 0
         self.pc = 0
 
     @classmethod
     def from_proto(cls, func: Proto):
         return cls(func)
+
+    def find_upval(self, index: int) -> Upvalue:
+        """Return the upvalue capturing local register `index`, creating one on
+        first use so that sibling closures in this frame share the same cell."""
+        upval = self.open_upvals.get(index)
+        if upval is None:
+            upval = Upvalue(self.stack, index)
+            self.open_upvals[index] = upval
+        return upval
 
     def fetch(self) -> Instruction | None:
         if self.pc >= len(self.func.codes):
@@ -121,10 +155,6 @@ class LClosure(Closure):
         self.pc += 1
         return instruction
 
-    # debug
-    def print_stack(self):
-        pass
-
 
 class PClosure(Closure):
     func: PyFunction
@@ -132,7 +162,6 @@ class PClosure(Closure):
     def __init__(self, func: PyFunction):
         self.func = func
         self.stack = []
-        self.upvalues = []
 
     @classmethod
     def from_function(cls, func: PyFunction):
