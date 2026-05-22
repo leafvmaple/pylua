@@ -3,20 +3,11 @@
 Tests marked with @unittest.skip document known PyLua implementation bugs.
 When you fix a bug, remove the skip decorator and the test should pass.
 
-Known VM limitations at time of writing:
-  - TESTSET opcode bug: `print(x and y)` / `print(x or y)` always yields nil
-  - break generates placeholder JMP → infinite loop in while/for
-  - [[long strings]] not supported by lexer
-  - String == / ~= comparison raises AssertionError
-  - do-end local scope shadowing doesn't restore outer variable with same name
-  - Closures / upvalues don't work (captured locals always nil)
-  - Recursion: function calls implemented via Python call-stack; very shallow depth
-  - Method (obj:method) calls don't pass self correctly
-  - Metatables (__index, __newindex, etc.) lookups don't fire
-  - pcall / error don't return proper result values
-  - next() / manual iteration broken
-  - Multiple return values in table constructors return function refs
-  - Unary minus precedence vs power: -2^2 yields 4 instead of -4
+Known VM limitations still outstanding:
+  - Vararg (...) expansion captures the wrong arity in several cases
+  - Multiple return values aren't expanded in table constructors / call args
+  - Parenthesized expressions don't accept postfix access, so `(a - b).value`
+    fails to parse
 """
 
 import io
@@ -638,7 +629,6 @@ class TestFunctions(unittest.TestCase):
         """)
         self.assertEqual(out, ["nil"])
 
-    @unittest.skip("known bug: recursive function calls cause Python RecursionError")
     def test_recursion_factorial(self):
         out = run_lua_lines("""
             function fact(n)
@@ -649,7 +639,6 @@ class TestFunctions(unittest.TestCase):
         """)
         self.assertEqual(out, ["3628800"])
 
-    @unittest.skip("known bug: recursive function calls cause Python RecursionError")
     def test_recursion_fibonacci(self):
         out = run_lua_lines("""
             function fib(n)
@@ -703,7 +692,6 @@ class TestFunctions(unittest.TestCase):
 
 
 class TestClosures(unittest.TestCase):
-    @unittest.skip("known bug: closures/upvalues don't capture locals correctly")
     def test_basic_closure(self):
         out = run_lua_lines("""
             function make_counter()
@@ -720,7 +708,6 @@ class TestClosures(unittest.TestCase):
         """)
         self.assertEqual(out, ["1", "2", "3"])
 
-    @unittest.skip("known bug: closures/upvalues don't capture locals correctly")
     def test_closure_captures_local(self):
         out = run_lua_lines("""
             local x = 10
@@ -729,7 +716,6 @@ class TestClosures(unittest.TestCase):
         """)
         self.assertEqual(out, ["10"])
 
-    @unittest.skip("known bug: closures/upvalues don't capture locals correctly")
     def test_multiple_closures_share_upvalue(self):
         out = run_lua_lines("""
             function make()
@@ -761,7 +747,6 @@ class TestClosures(unittest.TestCase):
         # Let's just check we get numbers
         self.assertEqual(len(out), 3)
 
-    @unittest.skip("known bug: closures/upvalues don't capture locals correctly")
     def test_nested_closure(self):
         out = run_lua_lines("""
             function a()
@@ -1012,7 +997,6 @@ class TestMetatables(unittest.TestCase):
         """)
         self.assertEqual(out, ["10"])
 
-    @unittest.skip("known bug: __add metamethod doesn't work")
     def test_add_metamethod(self):
         out = run_lua_lines("""
             local mt = {
@@ -1077,7 +1061,9 @@ class TestMetatables(unittest.TestCase):
         """)
         self.assertEqual(out, ["protected"])
 
-    @unittest.skip("known bug: __sub metamethod — parser error on multiline metatable def")
+    @unittest.skip(
+        "known bug: __sub metamethod: blocked by parser bug — (expr).field postfix not parsed"
+    )
     def test_sub_metamethod(self):
         out = run_lua_lines("""
             local mt = {
@@ -1091,7 +1077,9 @@ class TestMetatables(unittest.TestCase):
         """)
         self.assertEqual(out, ["20"])
 
-    @unittest.skip("known bug: __mul metamethod — parser error on multiline metatable def")
+    @unittest.skip(
+        "known bug: __mul metamethod: blocked by parser bug — (expr).field postfix not parsed"
+    )
     def test_mul_metamethod(self):
         out = run_lua_lines("""
             local mt = {
@@ -1105,7 +1093,9 @@ class TestMetatables(unittest.TestCase):
         """)
         self.assertEqual(out, ["12"])
 
-    @unittest.skip("known bug: __unm metamethod — parser error on multiline metatable def")
+    @unittest.skip(
+        "known bug: __unm metamethod: blocked by parser bug — (expr).field postfix not parsed"
+    )
     def test_unm_metamethod(self):
         out = run_lua_lines("""
             local mt = {
@@ -1125,7 +1115,6 @@ class TestMetatables(unittest.TestCase):
 
 
 class TestOOP(unittest.TestCase):
-    @unittest.skip("known bug: OOP depends on methods + metatables which are broken")
     def test_class_pattern(self):
         out = run_lua_lines("""
             local Animal = {}
@@ -1149,7 +1138,6 @@ class TestOOP(unittest.TestCase):
         """)
         self.assertEqual(out, ["Dog says Woof", "Cat says Meow"])
 
-    @unittest.skip("known bug: OOP depends on methods + metatables which are broken")
     def test_inheritance_pattern(self):
         out = run_lua_lines("""
             local Base = {}
@@ -1489,7 +1477,6 @@ class TestEdgeCases(unittest.TestCase):
         """)
         self.assertEqual(out, ["3"])
 
-    @unittest.skip("known bug: recursive function calls cause Python RecursionError")
     def test_deep_recursion(self):
         out = run_lua_lines("""
             function sum(n)
@@ -1639,7 +1626,6 @@ class TestAlgorithms(unittest.TestCase):
         """)
         self.assertEqual(out, ["5 4 3 2 1"])
 
-    @unittest.skip("known bug: closures/upvalues don't capture locals correctly")
     def test_accumulator(self):
         out = run_lua_lines("""
             function make_accumulator(init)
@@ -1845,7 +1831,6 @@ class TestTableIteration(unittest.TestCase):
 
 
 class TestTailCalls(unittest.TestCase):
-    @unittest.skip("known bug: recursive calls cause Python RecursionError")
     def test_tail_call_basic(self):
         out = run_lua_lines("""
             function last(n)
@@ -1923,7 +1908,6 @@ class TestTableSetlist(unittest.TestCase):
 
 
 class TestScopingEdgeCases(unittest.TestCase):
-    @unittest.skip("known bug: closures/upvalues don't capture locals correctly")
     def test_upvalue_in_nested_loops(self):
         out = run_lua_lines("""
             local sum = 0
@@ -1940,7 +1924,6 @@ class TestScopingEdgeCases(unittest.TestCase):
         # sum of i*j for i=1..3, j=1..3 = (1+2+3)*(1+2+3)=36
         self.assertEqual(out, ["36"])
 
-    @unittest.skip("known bug: closures/upvalues don't capture locals correctly")
     def test_do_block_scope_upvalue(self):
         out = run_lua_lines("""
             local result
@@ -1998,7 +1981,6 @@ class TestErrorHandling(unittest.TestCase):
 
 
 class TestForwardRef(unittest.TestCase):
-    @unittest.skip("known bug: recursive calls cause Python RecursionError")
     def test_local_func_mutual_recursion(self):
         """Test local functions that reference each other."""
         out = run_lua_lines("""
@@ -2088,7 +2070,6 @@ class TestFirstClassFunctions(unittest.TestCase):
         """)
         self.assertEqual(out, ["13", "7"])
 
-    @unittest.skip("known bug: closures/upvalues don't capture locals correctly")
     def test_return_function(self):
         out = run_lua_lines("""
             function adder(x)
@@ -2102,7 +2083,6 @@ class TestFirstClassFunctions(unittest.TestCase):
         """)
         self.assertEqual(out, ["15", "25"])
 
-    @unittest.skip("known bug: closures/upvalues don't capture locals correctly")
     def test_compose(self):
         out = run_lua_lines("""
             function compose(f, g)
@@ -2187,7 +2167,6 @@ class TestTopLevelReturn(unittest.TestCase):
 
 
 class TestClosureIterator(unittest.TestCase):
-    @unittest.skip("known bug: closures/upvalues don't capture locals correctly")
     def test_stateful_iterator(self):
         out = run_lua_lines("""
             function range(n)
@@ -2206,7 +2185,6 @@ class TestClosureIterator(unittest.TestCase):
         """)
         self.assertEqual(out, ["15"])
 
-    @unittest.skip("known bug: closures/upvalues don't capture locals correctly")
     def test_custom_pairs_iterator(self):
         out = run_lua_lines("""
             function values(t)
