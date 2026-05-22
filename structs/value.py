@@ -226,12 +226,23 @@ class Value:
         return 0
 
     def __hash__(self):
+        # Distinguish booleans from numbers so that hash(true) != hash(1),
+        # mirroring the equality rule below (Lua: true ~= 1).
+        if type(self.value) is bool:
+            return hash(("bool", self.value))
         return hash(self.value)
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Value):
-            return False
-        return self.value == other.value
+            return NotImplemented
+        a, b = self.value, other.value
+        # In Lua, booleans are never equal to numbers even though Python treats
+        # True == 1. Require both sides to be booleans (or neither) to compare.
+        a_is_bool = type(a) is bool
+        b_is_bool = type(b) is bool
+        if a_is_bool or b_is_bool:
+            return a_is_bool and b_is_bool and a == b
+        return a == b
 
     def __repr__(self) -> str:
         if self.is_nil():
