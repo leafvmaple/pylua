@@ -55,7 +55,7 @@ class FuncInfo:
     scope_depth: int
 
     loc_vars: list[LocalVarInfo]
-    loc_names: dict[str, LocalVarInfo]
+    loc_names: dict[str, list[LocalVarInfo]]
     upval_names: dict[str, UpvalueInfo]
     break_jmps_stack: list[list[int]]
 
@@ -158,6 +158,15 @@ class FuncInfo:
     def exit_scope(self) -> None:
         """Exit the current variable scope."""
         assert self.scope_depth > 0, "No scope to exit"
+        for local_var in reversed(self.loc_vars):
+            if local_var.scope_depth != self.scope_depth:
+                continue
+            bindings = self.loc_names.get(local_var.name)
+            if not bindings or bindings[-1] is not local_var:
+                continue
+            bindings.pop()
+            if not bindings:
+                del self.loc_names[local_var.name]
         self.scope_depth -= 1
 
     def add_local_var(self, name: str) -> LocalVarInfo:
@@ -165,20 +174,24 @@ class FuncInfo:
         reg_idx = self.alloc_reg()
         local_var = LocalVarInfo(name, reg_idx, self.scope_depth)
         self.loc_vars.append(local_var)
-        self.loc_names[name] = local_var
+        self.loc_names.setdefault(name, []).append(local_var)
         return local_var
 
     def remove_local_var(self, name: str) -> None:
         """Remove a local variable from the current scope."""
-        local_var = self.loc_names.get(name)
-        if local_var and local_var.scope_depth == self.scope_depth:
+        bindings = self.loc_names.get(name)
+        local_var = bindings[-1] if bindings else None
+        if local_var is not None and local_var.scope_depth == self.scope_depth:
             self.loc_vars.remove(local_var)
-            del self.loc_names[name]
+            bindings.pop()
+            if not bindings:
+                del self.loc_names[name]
             self.free_reg()
 
     def get_local_var(self, name: str) -> LocalVarInfo | None:
         """Get local variable info by name."""
-        return self.loc_names.get(name)
+        bindings = self.loc_names.get(name)
+        return bindings[-1] if bindings else None
 
     def get_upval_info(self, name: str) -> UpvalueInfo | None:
         """Get upvalue info by name."""

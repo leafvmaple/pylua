@@ -3,9 +3,7 @@
 Tests marked with @unittest.skip document known PyLua implementation bugs.
 When you fix a bug, remove the skip decorator and the test should pass.
 
-Known VM limitations still outstanding:
-  - Parenthesized expressions don't accept postfix access, so `(a - b).value`
-    fails to parse
+Known implementation limitations are documented by skipped tests.
 """
 
 import io
@@ -306,8 +304,7 @@ class TestVariables(unittest.TestCase):
             end
             print(x)
         """)
-        # known limitation: same-name shadowing in do-end doesn't restore outer
-        self.assertEqual(out, ["20", "20"])
+        self.assertEqual(out, ["20", "10"])
 
     def test_uninitialized_local(self):
         out = run_lua_lines("""
@@ -574,8 +571,7 @@ class TestDoBlock(unittest.TestCase):
             end
             print(x)
         """)
-        # known limitation: do-end scope shadowing doesn't restore outer var
-        self.assertEqual(out, ["2"])
+        self.assertEqual(out, ["1"])
 
 
 # ===================================================================
@@ -1056,9 +1052,6 @@ class TestMetatables(unittest.TestCase):
         """)
         self.assertEqual(out, ["protected"])
 
-    @unittest.skip(
-        "known bug: __sub metamethod: blocked by parser bug — (expr).field postfix not parsed"
-    )
     def test_sub_metamethod(self):
         out = run_lua_lines("""
             local mt = {
@@ -1072,9 +1065,6 @@ class TestMetatables(unittest.TestCase):
         """)
         self.assertEqual(out, ["20"])
 
-    @unittest.skip(
-        "known bug: __mul metamethod: blocked by parser bug — (expr).field postfix not parsed"
-    )
     def test_mul_metamethod(self):
         out = run_lua_lines("""
             local mt = {
@@ -1088,9 +1078,6 @@ class TestMetatables(unittest.TestCase):
         """)
         self.assertEqual(out, ["12"])
 
-    @unittest.skip(
-        "known bug: __unm metamethod: blocked by parser bug — (expr).field postfix not parsed"
-    )
     def test_unm_metamethod(self):
         out = run_lua_lines("""
             local mt = {

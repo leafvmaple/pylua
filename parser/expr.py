@@ -146,7 +146,7 @@ class Expr:
 
         # Parenthesized expression
         elif token.type == "LPAREN":
-            return ParenExpr.parse(lexer)
+            return Expr.parse_postfix(lexer, ParenExpr.parse(lexer))
 
         # Identifier (with potential postfix)
         elif token.type == "IDENTIFIER":
@@ -436,7 +436,8 @@ class ParenExpr(Expr):
         return cls(exp)
 
     def codegen(self, info: FuncInfo, reg: int, cnt: int = 1):
-        self.exp.codegen(info, reg, cnt)
+        # Parentheses force a multi-result expression into a single value.
+        self.exp.codegen(info, reg, 1)
 
 
 class TableConstructorExpr(Expr):
