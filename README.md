@@ -92,6 +92,11 @@ Python 生态里常用下面两类工具：
 - 检查并自动修复部分问题：`ruff check . --fix`
 - 进行类型检查：`mypy .`
 - 运行测试：`python -m unittest -q`
+- 与官方 Lua 5.1 进行语义差分测试：`python tools/differential_test.py --lua lua5.1`
+
+差分测试语料位于 `tests/lua_conformance.json`。运行器会精确比较成功程序的标准输出，
+并比较失败程序是否都产生错误；错误消息本身因路径和堆栈格式不同而不做逐字比较。
+使用其他 Lua 版本做初步检查时，必须显式增加 `--allow-version-mismatch`。
 
 启用 `pre-commit`（推荐）：
 

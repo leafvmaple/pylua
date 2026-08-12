@@ -1,0 +1,54 @@
+[
+  {
+    "name": "arithmetic_and_precedence",
+    "source": "print(2 + 3 * 4)"
+  },
+  {
+    "name": "local_initializer_scope",
+    "source": "local x=10; do local x=x; print(x) end"
+  },
+  {
+    "name": "parallel_assignment_lhs_snapshot",
+    "source": "local i=1; local a={}; i,a[i]=2,10; print(i,a[1],a[2])"
+  },
+  {
+    "name": "vararg_local_expansion",
+    "source": "function f(...) local a,b=...; print(a,b) end; f(10,20)"
+  },
+  {
+    "name": "coercion_does_not_mutate_operand",
+    "source": "local x='2'; print(x+1); print(type(x),x)"
+  },
+  {
+    "name": "table_constructor_evaluation_order",
+    "source": "local i=0; function f(x) i=i+1; print(x,i); return i end; local t={f('a'), k=f('b'), f('c')}; print(t[1],t.k,t[2])"
+  },
+  {
+    "name": "nil_table_key_is_error",
+    "source": "local t={}; t[nil]=1"
+  },
+  {
+    "name": "index_number_is_error",
+    "source": "local x=3; print(x.foo)"
+  },
+  {
+    "name": "length_number_is_error",
+    "source": "print(#1)"
+  },
+  {
+    "name": "concat_boolean_is_error",
+    "source": "print('a'..true)"
+  },
+  {
+    "name": "mixed_order_comparison_is_error",
+    "source": "print(1 < '2')"
+  },
+  {
+    "name": "trailing_tokens_are_syntax_error",
+    "source": "print(1) end print(2)"
+  },
+  {
+    "name": "metamethod_result_uses_lua_truthiness",
+    "source": "local mt={__lt=function() return '' end}; local a=setmetatable({},mt); local b=setmetatable({},mt); print(a<b)"
+  }
+]
