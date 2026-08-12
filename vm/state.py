@@ -32,12 +32,12 @@ class LuaState:
     # Global
     mt: Table
 
-    def __init__(self, main: Proto):
+    def __init__(self, main: Proto, globals_table: Table | None = None):
         call_info = LClosure.from_proto(main)
         self.registry = Table()
         key = Value.number(LUA_GLOBALS_INDEX)
 
-        self.globals = Table()
+        self.globals = globals_table if globals_table is not None else Table()
         self.registry.set(key, Value.table(self.globals))
         self.mt = Table()
         self.call_info = [call_info]

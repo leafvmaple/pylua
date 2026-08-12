@@ -13,6 +13,8 @@ from binary.writer import write_bytecode
 from parser.block import Parser
 from parser.lexer import Lexer
 from structs.function import Proto
+from structs.table import Table
+from structs.value import Value
 from vm.state import LuaState
 
 
@@ -95,6 +97,9 @@ def compile_lua(
 
         proto = info.to_proto()
 
+        if strip_debug:
+            strip_proto_debug(proto)
+
         if list_bytecode:
             print(f"\nmain <{source_file}:0,0> ({len(proto.codes)} instructions)")
             print(info)
@@ -107,6 +112,16 @@ def compile_lua(
     except Exception as e:
         print(f"pyluac: {source_file}: {e}", file=sys.stderr)
         return None
+
+
+def strip_proto_debug(proto: Proto) -> None:
+    """Remove debug records recursively from a compiled prototype."""
+    proto.source = ""
+    proto.debug.line_infos.clear()
+    proto.debug.loc_vars.clear()
+    proto.debug.upvalues.clear()
+    for child in proto.protos:
+        strip_proto_debug(child)
 
 
 def execute_lua(
@@ -159,15 +174,22 @@ def execute_lua(
                 source = sys.stdin.read()
                 proto = compile_from_source(source, "<stdin>")
 
+        state = None
         if proto:
             # Set up arguments (arg table)
             state = LuaState(proto)
+            arg_table = Table()
+            if source_file or bytecode_file:
+                arg_table.set(0, Value.string(source_file or bytecode_file or ""))
+            for index, arg in enumerate(args or [], 1):
+                arg_table.set(index, Value.string(arg))
+            state.set_global("arg", Value.table(arg_table))
 
             # Run the VM
             state.run()
 
         if interactive:
-            return run_interactive()
+            return run_interactive(state.globals if state is not None else None)
 
         return 0
     except Exception as e:
@@ -175,7 +197,7 @@ def execute_lua(
         return 1
 
 
-def run_interactive() -> int:
+def run_interactive(globals_table: Table | None = None) -> int:
     """Run an interactive Lua REPL.
 
     Returns:
@@ -185,6 +207,7 @@ def run_interactive() -> int:
     print("Copyright (C) 2024")
     print('Type "exit()" or Ctrl+C to quit.')
 
+    globals_table = globals_table if globals_table is not None else Table()
     while True:
         try:
             line = input("> ")
@@ -196,7 +219,7 @@ def run_interactive() -> int:
             # Try to execute the line
             proto = compile_from_source(line, "<stdin>")
 
-            state = LuaState(proto)
+            state = LuaState(proto, globals_table)
             state.run()
 
         except KeyboardInterrupt:
@@ -237,6 +260,9 @@ def pyluac_main():
     if not args.files:
         parser.print_help()
         return 1
+
+    if len(args.files) > 1:
+        parser.error("compiling multiple input files into one chunk is not supported")
 
     output_file = args.output or "luac.out"
 
@@ -283,6 +309,11 @@ def pylua_main():
     parser.add_argument("--", dest="stop", action="store_true", help="stop handling options")
 
     args = parser.parse_args()
+
+    if args.require:
+        parser.error("--require is not supported because the module system is not implemented")
+    if args.E or args.W:
+        parser.error("-E and -W are not supported")
 
     # Determine if file is source or bytecode
     source_file = None

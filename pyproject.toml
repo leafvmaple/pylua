@@ -11,6 +11,10 @@ requires-python = ">=3.12"
 [project.optional-dependencies]
 dev = ["ruff", "mypy", "pre-commit"]
 
+[project.scripts]
+pylua = "cli:pylua_main"
+pyluac = "cli:pyluac_main"
+
 [tool.ruff]
 # 行长度限制（类似clang-format的column limit）
 line-length = 100
