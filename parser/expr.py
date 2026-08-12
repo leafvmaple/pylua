@@ -220,7 +220,7 @@ class VarargExpr(Expr):
         return cls()
 
     def codegen(self, info: FuncInfo, reg: int, cnt: int = 1):
-        CodegenInst.vararg(info, reg, cnt)
+        CodegenInst.vararg(info, reg, 0 if cnt == -1 else cnt + 1)
 
 
 class IntegerExpr(Expr):
@@ -519,10 +519,15 @@ class TableConstructorExpr(Expr):
             saved_used = info.used_regs
             info.used_regs = reg + 1
             batch_regs = info.alloc_regs(len(batch))
+            open_last = (
+                batch_start + len(batch) == len(array_vals)
+                and self.key_exps[-1] is None
+                and isinstance(batch[-1], (FuncCallExpr, VarargExpr))
+            )
             for i, val in enumerate(batch):
-                val.codegen(info, batch_regs + i)
+                val.codegen(info, batch_regs + i, -1 if open_last and i == len(batch) - 1 else 1)
             block = batch_start // fields_per_flush + 1  # 1-based block number
-            CodegenInst.set_list(info, reg, len(batch), block)
+            CodegenInst.set_list(info, reg, 0 if open_last else len(batch), block)
             info.used_regs = saved_used
 
 
@@ -647,14 +652,12 @@ class FuncCallExpr(Expr):
         # Generate code for arguments
         # When an argument is a function call, it should expect 1 return value
         arg_base = func_reg + (2 if self.name_expr else 1)
+        open_args = bool(self.args) and isinstance(self.args[-1], (FuncCallExpr, VarargExpr))
         for i, arg in enumerate(self.args):
-            if isinstance(arg, FuncCallExpr):
-                arg.codegen(info, arg_base + i, cnt=1)
-            else:
-                arg.codegen(info, arg_base + i)
+            arg.codegen(info, arg_base + i, cnt=-1 if open_args and i == len(self.args) - 1 else 1)
 
         nargs = len(self.args) + (1 if self.name_expr else 0)  # +1 for self
-        CodegenInst.call(info, func_reg, nargs, cnt)
+        CodegenInst.call(info, func_reg, -1 if open_args else nargs, cnt)
 
         if alloc_regs > 0:
             info.free_regs(alloc_regs)

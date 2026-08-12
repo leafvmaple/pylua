@@ -384,7 +384,9 @@ class Operator:
     @staticmethod
     def CALL(inst: Instruction, state: LuaState):
         a, b, c = inst.abc()
-        nargs = b - 1 if b != 0 else len(state.stack) - a - 1
+        frame = state.call_info[-1]
+        assert type(frame) is LClosure
+        nargs = b - 1 if b != 0 else frame.top - a - 1
         num_rets = c - 1
         # Push the callee's frame (or run a Python builtin inline) and let the
         # active dispatch loop step into it — keeps Lua recursion off the
@@ -400,7 +402,9 @@ class Operator:
     @staticmethod
     def RETURN(inst: Instruction, state: LuaState):
         a, b, _ = inst.abc()
-        ret_count = b - 1 if b != 0 else len(state.stack) - a
+        frame = state.call_info[-1]
+        assert type(frame) is LClosure
+        ret_count = b - 1 if b != 0 else frame.top - a
         state.postcall(a, ret_count)
 
     @staticmethod
@@ -452,7 +456,9 @@ class Operator:
             raise TypeError("SETLIST expects a table")
         assert type(table.value) is Table
 
-        n = b if b != 0 else len(state.stack) - a - 1
+        frame = state.call_info[-1]
+        assert type(frame) is LClosure
+        n = b if b != 0 else frame.top - a - 1
         base = (c - 1) * 50
 
         for i in range(1, n + 1):
@@ -494,11 +500,13 @@ class Operator:
         closure = state.call_info[-1]
         assert type(closure) is LClosure
         n = b - 1 if b != 0 else len(closure.varargs)
+        state._ensure_stack(state.stack, a + n)
         for i in range(n):
             if i < len(closure.varargs):
                 state.stack[a + i] = closure.varargs[i]
             else:
                 state.stack[a + i] = Value.nil()
+        closure.top = a + n
 
 
 # Pre-built dispatch table for O(1) opcode lookup instead of getattr

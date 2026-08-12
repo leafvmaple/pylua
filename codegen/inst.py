@@ -143,7 +143,9 @@ class CodegenInst:
     # num_args: number of arguments
     # num_rets: number of expected return values, -1 for variable
     def call(info: FuncInfo, a: int, num_args: int, num_rets: int):
-        info.emit_abc(OP["CALL"], a, num_args + 1, num_rets + 1)
+        b = 0 if num_args == -1 else num_args + 1
+        c = 0 if num_rets == -1 else num_rets + 1
+        info.emit_abc(OP["CALL"], a, b, c)
 
     @staticmethod
     def get_upval(info: FuncInfo, a: int, b: int):

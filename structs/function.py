@@ -122,6 +122,7 @@ class LClosure(Closure):
     num_rets: int  # number of expected return values
     ret_idx: int
     pc: int
+    top: int
 
     def __init__(self, func: Proto):
         from structs.value import Value
@@ -134,6 +135,7 @@ class LClosure(Closure):
         self.num_rets = 0
         self.ret_idx = 0
         self.pc = 0
+        self.top = 0
 
     @classmethod
     def from_proto(cls, func: Proto):

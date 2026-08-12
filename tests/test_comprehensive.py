@@ -4,8 +4,6 @@ Tests marked with @unittest.skip document known PyLua implementation bugs.
 When you fix a bug, remove the skip decorator and the test should pass.
 
 Known VM limitations still outstanding:
-  - Vararg (...) expansion captures the wrong arity in several cases
-  - Multiple return values aren't expanded in table constructors / call args
   - Parenthesized expressions don't accept postfix access, so `(a - b).value`
     fails to parse
 """
@@ -768,7 +766,6 @@ class TestClosures(unittest.TestCase):
 
 
 class TestVarargs(unittest.TestCase):
-    @unittest.skip("known bug: {...} in vararg function captures 0 elements")
     def test_vararg_function(self):
         out = run_lua_lines("""
             function sum(...)
@@ -783,7 +780,6 @@ class TestVarargs(unittest.TestCase):
         """)
         self.assertEqual(out, ["15"])
 
-    @unittest.skip("known bug: select() with varargs broken")
     def test_vararg_select(self):
         out = run_lua_lines("""
             function f(...)
@@ -794,7 +790,6 @@ class TestVarargs(unittest.TestCase):
         """)
         self.assertEqual(out, ["3", "20\t30"])
 
-    @unittest.skip("known bug: vararg pass-through returns nil")
     def test_vararg_pass_through(self):
         out = run_lua_lines("""
             function inner(a, b, c)
@@ -1450,7 +1445,6 @@ class TestEdgeCases(unittest.TestCase):
         """)
         self.assertEqual(out, ["number"])
 
-    @unittest.skip("known bug: multi-return in table constructor returns function refs")
     def test_multiple_return_in_table(self):
         out = run_lua_lines("""
             function multi() return 10, 20, 30 end
@@ -1459,7 +1453,6 @@ class TestEdgeCases(unittest.TestCase):
         """)
         self.assertEqual(out, ["10\t20\t30"])
 
-    @unittest.skip("known bug: multi-return in table constructor returns function refs")
     def test_multiple_return_last_only(self):
         out = run_lua_lines("""
             function multi() return 10, 20, 30 end
@@ -1848,7 +1841,6 @@ class TestTailCalls(unittest.TestCase):
 
 
 class TestMultipleReturns(unittest.TestCase):
-    @unittest.skip("known bug: multi-return in function call returns only first")
     def test_multi_return_in_funcall(self):
         out = run_lua_lines("""
             function two() return 1, 2 end
@@ -1856,7 +1848,6 @@ class TestMultipleReturns(unittest.TestCase):
         """)
         self.assertEqual(out, ["1\t2"])
 
-    @unittest.skip("known bug: multi-return as last arg not expanded")
     def test_multi_return_as_last_arg(self):
         out = run_lua_lines("""
             function two() return 10, 20 end

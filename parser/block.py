@@ -6,7 +6,7 @@ from typing import Any
 from codegen.func import FuncInfo
 from codegen.inst import CodegenInst
 
-from .expr import Expr
+from .expr import Expr, FuncCallExpr, VarargExpr
 from .lexer import Lexer
 from .stat import ReturnStmt, Stmt
 
@@ -41,9 +41,10 @@ class Block:
         if self.ret_exprs:
             num_rets = len(self.ret_exprs)
             ret_reg = info.alloc_regs(num_rets)
-            for i in range(num_rets):
-                self.ret_exprs[i].codegen(info, ret_reg + i)
-            CodegenInst.ret(info, ret_reg, num_rets + 1)
+            for i, expr in enumerate(self.ret_exprs):
+                is_open = i == num_rets - 1 and isinstance(expr, (FuncCallExpr, VarargExpr))
+                expr.codegen(info, ret_reg + i, -1 if is_open else 1)
+            CodegenInst.ret(info, ret_reg, 0 if is_open else num_rets + 1)
             info.free_regs(num_rets)
 
     def to_dict(self) -> dict[str, Any]:

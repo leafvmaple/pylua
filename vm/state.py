@@ -197,10 +197,14 @@ class LuaState:
             mt = func_value.get_metatable()
             callable_value = mt.get(Value("__call")) if mt else None
             if callable_value and callable_value.is_function():
-                assert type(callable_value.value) is LClosure
-                self.stack[idx] = self.lua_call(
-                    callable_value.value, *self.stack[idx : idx + nargs + 1]
-                )
+                # __call receives the table itself as its first argument.
+                args = self.stack[idx : idx + nargs + 1]
+                self._ensure_stack(self.stack, idx + nargs + 2)
+                self.stack[idx] = callable_value
+                self.stack[idx + 1 : idx + nargs + 2] = args
+                self.precall(idx, nargs + 1, num_rets)
+            else:
+                raise TypeError("attempt to call a table value")
         else:
             raise TypeError(f"attempt to call a {func_value.type_name()} value")
 
@@ -221,6 +225,8 @@ class LuaState:
             else:
                 frame.varargs.append(value)
 
+        frame.top = proto.num_params
+
         self.call_info.append(frame)
 
     def _precall_py(self, closure: PClosure, func_idx: int, nargs: int, num_rets: int):
@@ -233,9 +239,14 @@ class LuaState:
         self.call_info.pop()
 
         ret_start = len(frame.stack) - ret_count
-        for i in range(num_rets):
+        wanted = ret_count if num_rets == -1 else num_rets
+        self._ensure_stack(caller_stack, func_idx + wanted)
+        for i in range(wanted):
             ret_value = frame.stack[ret_start + i] if i < ret_count else Value.nil()
             caller_stack[func_idx + i] = ret_value
+        caller = self.call_info[-1]
+        if type(caller) is LClosure:
+            caller.top = func_idx + wanted
 
     def postcall(self, ret_start: int, ret_count: int):
         """Pop the current Lua frame and copy its results into the caller."""
@@ -250,9 +261,18 @@ class LuaState:
             return  # main chunk returned; no caller to receive results
 
         caller_stack = self.stack
+        self._ensure_stack(caller_stack, frame.ret_idx + num_rets)
         for i in range(num_rets):
             ret_value = frame.stack[ret_start + i] if i < ret_count else Value.nil()
             caller_stack[frame.ret_idx + i] = ret_value
+        caller = self.call_info[-1]
+        if type(caller) is LClosure:
+            caller.top = frame.ret_idx + num_rets
+
+    @staticmethod
+    def _ensure_stack(stack: list[Value], size: int) -> None:
+        if len(stack) < size:
+            stack.extend(Value.nil() for _ in range(size - len(stack)))
 
     def pcall(self, idx: int, nargs: int, num_rets: int) -> int:
         base = len(self.call_info)
