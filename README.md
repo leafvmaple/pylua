@@ -1,14 +1,15 @@
 # PyLua
 
-一个使用 Python 实现的 Lua 解释器/虚拟机实验项目，包含 Lua 字节码读取、AST/解析器、简单代码生成以及运行时执行等模块。
+一个使用 Python 实现的 Lua 5.1 风格解释器/虚拟机实验项目，包含源码解析、代码生成、字节码读写和运行时执行。
 
 ## 功能概览
 
 - 读取 Lua 字节码（.luac）并解析 Header/Proto
-- 虚拟机执行部分指令集
+- 虚拟机执行 Lua 5.1 指令模型
 - 词法分析与语法分析（parser/）
 - AST 与简单代码生成（codegen/）
-- 基础运行时与内建函数（如 `print`、`getmetatable`、`setmetatable` 等）
+- 函数、闭包、upvalue、变参、多返回值、table 和元表
+- 基础运行时与内建函数（如 `print`、`pcall`、`pairs`、`select` 等）
 - 命令行工具支持（pylua 和 pyluac）
 
 ## 目录结构
@@ -26,7 +27,7 @@
 │  ├─ block.py
 │  ├─ expr.py
 │  ├─ lexer.py
-│  ├─ lua_ast_util.py
+│  ├─ serialize.py
 │  └─ stat.py
 ├─ structs/           # 数据结构
 │  ├─ function.py
@@ -46,23 +47,33 @@
 
 ## 环境要求
 
-- Python 3.12+（建议）
+- Python 3.12+
 
 ## 快速开始
+
+安装后可直接使用 `pylua` 和 `pyluac`：
+
+```bash
+python -m pip install -e .
+```
 
 ### 使用解释器（pylua）
 
 1) 准备 Lua 源文件（示例：`test.lua`）
 2) 运行：
-   - `python pylua.py test.lua`
+   - `pylua test.lua first-arg second-arg`
+
+脚本参数通过全局 `arg` table 读取；`arg[0]` 是脚本路径。直接运行 `pylua` 会进入 REPL，REPL 中的全局变量会跨输入行保留。
 
 ### 使用编译器（pyluac）
 
 1) 准备 Lua 源文件（示例：`test.lua`）
 2) 编译为字节码：
-   - `python pyluac.py -o test.luac test.lua`
+   - `pyluac -o test.luac test.lua`
 3) 运行编译后的字节码：
-   - `python pylua.py test.luac`
+   - `pylua test.luac`
+
+使用 `pyluac -s` 可以递归移除调试记录。目前不支持把多个源文件合并成一个 chunk，也尚未实现模块加载，因此 `pylua -l/--require` 会明确报错。
 
 ## 代码格式化与静态检查
 
@@ -80,6 +91,7 @@ Python 生态里常用下面两类工具：
 - 格式化代码：`ruff format .`
 - 检查并自动修复部分问题：`ruff check . --fix`
 - 进行类型检查：`mypy .`
+- 运行测试：`python -m unittest -q`
 
 启用 `pre-commit`（推荐）：
 
@@ -104,14 +116,15 @@ Python 生态里常用下面两类工具：
 
 ## 已知限制
 
-- 项目为实验性质，指令集、语法覆盖与标准库支持均不完整
-- 字节码序列化功能正在开发中
-- 运行示例依赖本地 Lua 编译器生成 `.luac`
+- 项目为实验性质，标准库、协程、userdata 和模块系统尚不完整
+- 字节码仅支持 Lua 5.1、32 位指令/整数、4/8 字节 `size_t` 和 double 数值布局
+- `.luac` 与具体 Lua 构建的平台布局有关；读取外部 chunk 时会校验 header，不保证兼容其他 Lua 版本
+- REPL 当前按单行编译，不支持跨行输入一个未完成的代码块
 
 ## Roadmap
 
 - 扩展 VM 指令集与运行时内建函数
 - 完善语法解析与代码生成
-- 实现完整的字节码序列化功能
-- 增加测试与示例
+- 扩展标准库、模块系统和协程支持
+- 增加与官方 Lua 5.1 的差分测试和模糊测试
 - 优化性能与错误处理

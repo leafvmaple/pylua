@@ -38,9 +38,11 @@ class TestCLI(unittest.TestCase):
 
     def test_repl_preserves_globals_between_lines(self):
         output = io.StringIO()
-        with patch("builtins.input", side_effect=["x = 7", "print(x)", "exit()"]):
-            with redirect_stdout(output):
-                status = run_interactive()
+        with (
+            patch("builtins.input", side_effect=["x = 7", "print(x)", "exit()"]),
+            redirect_stdout(output),
+        ):
+            status = run_interactive()
         self.assertEqual(status, 0)
         self.assertIn("\n7\n", output.getvalue())
 

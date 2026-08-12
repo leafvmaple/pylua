@@ -182,6 +182,7 @@ class FuncInfo:
         bindings = self.loc_names.get(name)
         local_var = bindings[-1] if bindings else None
         if local_var is not None and local_var.scope_depth == self.scope_depth:
+            assert bindings is not None
             self.loc_vars.remove(local_var)
             bindings.pop()
             if not bindings:

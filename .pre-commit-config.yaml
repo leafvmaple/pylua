@@ -9,6 +9,6 @@ repos:
 
       - id: ruff-check
         name: ruff check
-        entry: python -m ruff check --fix
+        entry: python -m ruff check
         language: system
         types_or: [python, pyi]
