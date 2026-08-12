@@ -3,8 +3,16 @@ from typing import BinaryIO
 
 
 class Reader:
+    MAX_STRING_SIZE = 16 * 1024 * 1024
+
     def __init__(self, file: BinaryIO):
         self.file = file
+        self.endian = "<"
+        self.size_len = 8
+
+    def configure(self, endianness: int, size_len: int) -> None:
+        self.endian = "<" if endianness == 1 else ">"
+        self.size_len = size_len
 
     def read_bytes(self, n: int) -> bytes:
         data = self.file.read(n)
@@ -18,28 +26,39 @@ class Reader:
 
     def read_uint32(self) -> int:
         """Read an unsigned 32-bit integer."""
-        return struct.unpack("I", self.read_bytes(4))[0]
+        return struct.unpack(f"{self.endian}I", self.read_bytes(4))[0]
 
     def read_uint64(self) -> int:
         """Read an unsigned 64-bit integer."""
-        return struct.unpack("Q", self.read_bytes(8))[0]
+        return struct.unpack(f"{self.endian}Q", self.read_bytes(8))[0]
 
     def read_double(self) -> float:
         """Read a double-precision float."""
-        return struct.unpack("d", self.read_bytes(8))[0]
+        return struct.unpack(f"{self.endian}d", self.read_bytes(8))[0]
+
+    def read_size_t(self) -> int:
+        if self.size_len == 4:
+            return self.read_uint32()
+        if self.size_len == 8:
+            return self.read_uint64()
+        raise ValueError(f"Unsupported size_t width: {self.size_len}")
 
     def read_string(self) -> str:
-        length = self.read_uint64()
+        length = self.read_size_t()
         if length == 0:
             return ""
+        if length > self.MAX_STRING_SIZE:
+            raise ValueError(f"Bytecode string is too large: {length} bytes")
         string_bytes = self.read_bytes(length - 1)  # Exclude null terminator
         self.read_bytes(1)  # Read and discard null terminator
         return string_bytes.decode("utf-8")
 
 
 class Writer:
-    def __init__(self, file: BinaryIO):
+    def __init__(self, file: BinaryIO, endianness: int = 1, size_len: int = 8):
         self.file = file
+        self.endian = "<" if endianness == 1 else ">"
+        self.size_len = size_len
 
     def write_bytes(self, data: bytes) -> None:
         """Write bytes to the file."""
@@ -51,23 +70,31 @@ class Writer:
 
     def write_uint32(self, value: int) -> None:
         """Write an unsigned 32-bit integer."""
-        self.file.write(struct.pack("I", value))
+        self.file.write(struct.pack(f"{self.endian}I", value))
 
     def write_uint64(self, value: int) -> None:
         """Write an unsigned 64-bit integer."""
-        self.file.write(struct.pack("Q", value))
+        self.file.write(struct.pack(f"{self.endian}Q", value))
 
     def write_double(self, value: float) -> None:
         """Write a double-precision float."""
-        self.file.write(struct.pack("d", value))
+        self.file.write(struct.pack(f"{self.endian}d", value))
+
+    def write_size_t(self, value: int) -> None:
+        if self.size_len == 4:
+            self.write_uint32(value)
+        elif self.size_len == 8:
+            self.write_uint64(value)
+        else:
+            raise ValueError(f"Unsupported size_t width: {self.size_len}")
 
     def write_string(self, value: str) -> None:
         """Write a string to the file."""
         if not value:
-            self.write_uint64(0)
+            self.write_size_t(0)
             return
         string_bytes = value.encode("utf-8")
         length = len(string_bytes) + 1  # Include null terminator
-        self.write_uint64(length)
+        self.write_size_t(length)
         self.file.write(string_bytes)
         self.file.write(b"\x00")  # Write null terminator

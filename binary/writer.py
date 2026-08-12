@@ -104,13 +104,13 @@ def write_bytecode(proto: Proto, output_file: str) -> None:
     header.format = 0
     header.endianness = 1  # Little endian
     header.int_len = 4
-    header.size_len = 4
+    header.size_len = 8
     header.inst_len = 4
     header.number_len = 8
     header.number_is_int = False
 
     # Write to file
     with open(output_file, "wb") as f:
-        writer = Writer(f)
+        writer = Writer(f, header.endianness, header.size_len)
         write_header(writer, header)
         write_proto(writer, proto)
