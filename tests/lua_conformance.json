@@ -50,5 +50,25 @@
   {
     "name": "metamethod_result_uses_lua_truthiness",
     "source": "local mt={__lt=function() return '' end}; local a=setmetatable({},mt); local b=setmetatable({},mt); print(a<b)"
+  },
+  {
+    "name": "tonumber_with_base",
+    "source": "print(tonumber('ff',16),tonumber('12',2))"
+  },
+  {
+    "name": "tostring_metamethod",
+    "source": "local t=setmetatable({}, {__tostring=function() return 'named' end}); print(tostring(t))"
+  },
+  {
+    "name": "remove_metatable_with_nil",
+    "source": "local t=setmetatable({},{}); setmetatable(t,nil); print(getmetatable(t))"
+  },
+  {
+    "name": "pcall_preserves_error_object",
+    "source": "local marker={}; local ok,e=pcall(function() error(marker) end); print(ok,e==marker,type(e))"
+  },
+  {
+    "name": "next_rejects_invalid_key",
+    "source": "local t={a=1}; next(t,'missing')"
   }
 ]

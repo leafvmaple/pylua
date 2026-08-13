@@ -24,6 +24,14 @@ LUA_ERR_MEM = 4
 LUA_ERR_ERR = 5
 
 
+class LuaRuntimeError(RuntimeError):
+    """A Lua error carrying the original value thrown by error()."""
+
+    def __init__(self, value: Value):
+        super().__init__(str(value))
+        self.value = value
+
+
 class LuaState:
     call_info: list[LClosure | PClosure]
     registry: Table
@@ -140,15 +148,13 @@ class LuaState:
     def setmetatable(self, idx: int) -> None:
         obj = self._index2adr(idx)
         mt = self.stack[-1]
-        if not mt.is_table():
-            raise TypeError("setmetatable expects a table as metatable")
-        assert type(mt.value) is Table
-
-        if obj.is_table():
-            assert type(obj.value) is Table
-            obj.value.setmetatable(mt.value)
-        else:
-            self.mt.set(Value.string(obj.type_name()), mt)
+        if not obj.is_table():
+            raise TypeError("setmetatable expects a table")
+        if not mt.is_table() and not mt.is_nil():
+            raise TypeError("setmetatable expects a table or nil as metatable")
+        assert type(obj.value) is Table
+        metatable = mt.value if isinstance(mt.value, Table) else None
+        obj.value.setmetatable(metatable)
 
     def getmetafield(self, idx: int, field: str) -> int:
         if self.getmetatable(idx) == 0:
@@ -284,7 +290,8 @@ class LuaState:
                 self.call_info.pop()
             # Keep current frame's stack object; replace contents with error only.
             self.stack.clear()
-            self.pushvalue(Value.string(str(e)))
+            error_value = e.value if isinstance(e, LuaRuntimeError) else Value.string(str(e))
+            self.pushvalue(error_value)
             if isinstance(e, RuntimeError):
                 return LUA_ERR_RUN
             elif isinstance(e, SyntaxError):
@@ -297,7 +304,7 @@ class LuaState:
 
     def error(self):
         value = self.stack[-1]
-        raise RuntimeError(value.value)
+        raise LuaRuntimeError(value)
 
     def run(self):
         """Top-level execution loop: run the main chunk to completion."""

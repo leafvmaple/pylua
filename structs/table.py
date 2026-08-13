@@ -65,37 +65,22 @@ class Table:
         return len(self._list)
 
     def next(self, key: Value) -> tuple[Value, Value] | None:
+        entries: list[tuple[Value, Value]] = [
+            (_make_number_value(index), value) for index, value in enumerate(self._list, 1)
+        ]
+        entries.extend(
+            (_make_number_value(map_key) if isinstance(map_key, int) else map_key, value)
+            for map_key, value in self._map.items()
+        )
         if key.is_nil():
-            if len(self._list) > 0:
-                return _make_value(1), self._list[0]
-            for k in self._map:
-                if isinstance(k, int):
-                    return _make_number_value(k), self._map[k]
-                return k, self._map[k]
-            return None
+            return entries[0] if entries else None
 
-        int_key = key.get_integer()
-        if int_key is not None:
-            return self._list_next(int_key) or self._map_next(int_key)
-        return self._map_next(key)
+        for index, (entry_key, _) in enumerate(entries):
+            if entry_key == key:
+                return entries[index + 1] if index + 1 < len(entries) else None
+        raise RuntimeError("invalid key to 'next'")
 
-    def _list_next(self, key: int) -> tuple[Value, Value] | None:
-        if key < len(self._list):
-            return _make_value(key + 1), self._list[key]
-        return None
-
-    def _map_next(self, key: Value | int) -> tuple[Value, Value] | None:
-        found = False
-        for k in self._map:
-            if found:
-                if isinstance(k, int):
-                    return _make_number_value(k), self._map[k]
-                return k, self._map[k]
-            if k == key:
-                found = True
-        return None
-
-    def setmetatable(self, metatable: Table):
+    def setmetatable(self, metatable: Table | None):
         self._metatable = metatable
 
     def getmetatable(self) -> Table | None:

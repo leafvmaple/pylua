@@ -2189,6 +2189,44 @@ class TestClosureIterator(unittest.TestCase):
 
 
 class TestConformanceRegressions(unittest.TestCase):
+    def test_tonumber_with_base(self):
+        self.assertEqual(run_lua_lines("print(tonumber('ff',16),tonumber('12',2))"), ["255\tnil"])
+
+    def test_tostring_metamethod(self):
+        out = run_lua_lines("""
+            local t=setmetatable({}, {__tostring=function() return "named" end})
+            print(tostring(t))
+        """)
+        self.assertEqual(out, ["named"])
+
+    def test_setmetatable_accepts_nil(self):
+        out = run_lua_lines("""
+            local t=setmetatable({}, {})
+            setmetatable(t,nil)
+            print(getmetatable(t))
+        """)
+        self.assertEqual(out, ["nil"])
+
+    def test_pcall_preserves_error_value(self):
+        out = run_lua_lines("""
+            local marker={}
+            local ok,e=pcall(function() error(marker) end)
+            print(ok,e==marker,type(e))
+        """)
+        self.assertEqual(out, ["false\ttrue\ttable"])
+
+    def test_next_rejects_invalid_key(self):
+        with self.assertRaisesRegex(RuntimeError, "invalid key"):
+            run_lua("local t={a=1}; next(t,'missing')")
+
+    def test_next_transitions_from_array_to_hash_entries(self):
+        out = run_lua_lines("""
+            local t={10,20,x=30}
+            local k,v=next(t,2)
+            print(k,v)
+        """)
+        self.assertEqual(out, ["x\t30"])
+
     def test_sequential_scopes_reuse_registers(self):
         source = ";".join(f"do local x{i}={i} end" for i in range(300))
         proto = compile_from_source(source)

@@ -35,6 +35,18 @@ class BUILTIN:
         if state.gettop() < 1:
             raise RuntimeError("bad argument #1 to 'tostring' (value expected)")
         val = state.stack[0]
+        mt = val.get_metatable()
+        metamethod = mt.get(Value.string("__tostring")) if mt else None
+        if metamethod is not None and metamethod.is_function():
+            from structs.function import LClosure
+
+            if not isinstance(metamethod.value, LClosure):
+                raise RuntimeError("invalid __tostring metamethod")
+            result = state.lua_call(metamethod.value, val)
+            if not result.is_string():
+                raise RuntimeError("'__tostring' must return a string")
+            state.pushvalue(result)
+            return 1
         state.pushvalue(Value.string(str(val)))
         return 1
 
@@ -44,6 +56,18 @@ class BUILTIN:
         if state.gettop() < 1:
             raise RuntimeError("bad argument #1 to 'tonumber' (value expected)")
         val = state.stack[0]
+        if state.gettop() >= 2:
+            base = state.stack[1].get_integer()
+            if base is None or not 2 <= base <= 36:
+                raise RuntimeError("bad argument #2 to 'tonumber' (base out of range)")
+            if not val.is_string():
+                raise RuntimeError("bad argument #1 to 'tonumber' (string expected)")
+            assert isinstance(val.value, str)
+            try:
+                state.pushvalue(Value.number(int(val.value.strip(), base)))
+            except ValueError:
+                state.pushnil()
+            return 1
         if val.is_number():
             state.pushvalue(val)
             return 1
@@ -201,6 +225,10 @@ class BUILTIN:
 
     @staticmethod
     def lua_setmetatable(state: LuaState) -> int:
+        if state.gettop() < 2 or not state.stack[0].is_table():
+            raise RuntimeError("bad argument #1 to 'setmetatable' (table expected)")
+        if not state.stack[1].is_table() and not state.stack[1].is_nil():
+            raise RuntimeError("bad argument #2 to 'setmetatable' (nil or table expected)")
         if state.getmetafield(1, "__metatable") != 0:
             raise RuntimeError("cannot change a protected metatable")
         state.settop(2)
@@ -216,12 +244,14 @@ class BUILTIN:
         index = state.stack[1]
         if not table.is_table():
             raise TypeError("ipairsaux expects a table")
-        index.conv_str_to_number()
-        if not index.is_number():
+        converted = index.to_str_number()
+        if converted is None:
             raise TypeError("ipairsaux index must be a number")
 
-        assert type(index.value) is int
-        next_index = index.value + 1
+        next_index_value = converted.get_integer()
+        if next_index_value is None:
+            raise TypeError("ipairsaux index must be an integer")
+        next_index = next_index_value + 1
 
         assert type(table.value) is Table
         value = table.value.get(next_index)
