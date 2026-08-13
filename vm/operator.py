@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
 class CheckNumber(LuaCheckable):
     @staticmethod
     def check(val: Value) -> bool:
-        return val.conv_str_to_number()
+        return val.to_str_number() is not None
 
     @staticmethod
     def checks(va: Value, vb: Value) -> bool:
@@ -56,9 +57,10 @@ class UnaryOperator:
     def solve(self, state: LuaState, a: int) -> Value | bool:
         va = state.get_rk(a)
         mt = va.get_metatable()
-        if self.check.check(va):
-            assert isinstance(va.value, (int, float))
-            return Value.number(self.op(va.value))
+        converted = va.to_str_number()
+        if converted is not None:
+            assert isinstance(converted.value, (int, float))
+            return Value.number(self.op(converted.value))
         else:
             if mt:
                 meta_func = mt.get(Value.string(self.meta))
@@ -100,11 +102,14 @@ class BinaryOperator:
         return None
 
     def _solve_arith(self, va: Value, vb: Value) -> Value | None:
-        if not self.check.checks(va, vb):
+        converted_a = va.to_str_number()
+        converted_b = vb.to_str_number()
+        if converted_a is None or converted_b is None:
             return None
-        assert isinstance(va.value, (int, float)) and isinstance(vb.value, (int, float))
+        assert isinstance(converted_a.value, (int, float))
+        assert isinstance(converted_b.value, (int, float))
         arith_op = cast(ArithFuncType, self.op)
-        return Value.number(arith_op(va.value, vb.value))
+        return Value.number(arith_op(converted_a.value, converted_b.value))
 
     def _call_metamethod(self, state: LuaState, va: Value, vb: Value) -> Value | None:
         mt = va.get_metatable()
@@ -137,8 +142,8 @@ class BinaryOperator:
         if type(res) is Value:
             state.stack[idx] = res
         else:
-            va = state.stack[a]
-            vb = state.stack[b]
+            va = state.get_rk(a)
+            vb = state.get_rk(b)
             raise TypeError(
                 f"attempt to perform arithmetic on {va.type_name()} and {vb.type_name()}"
             )
@@ -146,8 +151,30 @@ class BinaryOperator:
     def compare(self, state: LuaState, a: int, b: int) -> bool:
         res = self.solve(state, a, b)
         if type(res) is Value:
-            return bool(res.value)
-        return False
+            return res.get_boolean()
+        if self.meta == "__eq":
+            return False
+        va = state.get_rk(a)
+        vb = state.get_rk(b)
+        raise TypeError(f"attempt to compare {va.type_name()} with {vb.type_name()}")
+
+
+def lua_divide(a: int | float, b: int | float) -> int | float:
+    if b != 0:
+        return a / b
+    if a == 0:
+        return math.nan
+    return math.copysign(math.inf, a * math.copysign(1.0, b))
+
+
+def lua_power(a: int | float, b: int | float) -> int | float:
+    try:
+        result = math.pow(a, b)
+    except ValueError:
+        return math.nan
+    except OverflowError:
+        return math.inf
+    return result
 
 
 UNARY_ARITH = {
@@ -160,9 +187,9 @@ BINARY_ARITH = {
     "ADD": BinaryOperator(lambda a, b: a + b, CheckNumber, "__add"),
     "SUB": BinaryOperator(lambda a, b: a - b, CheckNumber, "__sub"),
     "MUL": BinaryOperator(lambda a, b: a * b, CheckNumber, "__mul"),
-    "DIV": BinaryOperator(lambda a, b: a / b, CheckNumber, "__div"),
+    "DIV": BinaryOperator(lua_divide, CheckNumber, "__div"),
     "MOD": BinaryOperator(lambda a, b: a % b, CheckNumber, "__mod"),
-    "POW": BinaryOperator(lambda a, b: a**b, CheckNumber, "__pow"),
+    "POW": BinaryOperator(lua_power, CheckNumber, "__pow"),
     "EQ": BinaryOperator(lambda a, b: a == b, CompareCheck, "__eq"),
     "LT": BinaryOperator(lambda a, b: a < b, CompareCheck, "__lt"),
     "LE": BinaryOperator(lambda a, b: a <= b, CompareCheck, "__le"),
@@ -212,13 +239,9 @@ class Operator:
     @staticmethod
     def GETTABLE(inst: Instruction, state: LuaState):
         a, b, c = inst.abc()
-        table_value = state.stack[b]
         key = state.get_rk(c)
-        if table_value.is_table():
-            result = state.gettable(b, key)
-            state.stack[a] = result
-        else:
-            state.stack[a] = Value.nil()
+        result = state.gettable(b, key)
+        state.stack[a] = result
 
     @staticmethod
     def SETGLOBAL(inst: Instruction, state: LuaState):
@@ -328,13 +351,22 @@ class Operator:
     @staticmethod
     def CONCAT(inst: Instruction, state: LuaState):
         a, b, c = inst.abc()
-        parts: list[str] = []
-        for i in range(b, c + 1):
-            val = state.stack[i]
-            s = val.get_string()
-            if s is not None:
-                parts.append(s)
-        state.stack[a] = Value.string("".join(parts))
+        result = state.stack[c]
+        for i in range(c - 1, b - 1, -1):
+            left = state.stack[i]
+            left_string = left.get_string()
+            right_string = result.get_string()
+            if left_string is not None and right_string is not None:
+                result = Value.string(left_string + right_string)
+                continue
+
+            metamethod = BinaryOperator(lambda _a, _b: 0, CheckNumber, "__concat")
+            meta_result = metamethod._call_metamethod(state, left, result)
+            if meta_result is None:
+                bad = left if left_string is None else result
+                raise TypeError(f"attempt to concatenate a {bad.type_name()} value")
+            result = meta_result
+        state.stack[a] = result
 
     @staticmethod
     def JMP(inst: Instruction, state: LuaState):

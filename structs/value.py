@@ -204,6 +204,8 @@ class Value:
                 return caller(index.value, self, key)
             if index.is_table():
                 return index.gettable(key, caller)
+        if not self.is_table():
+            raise TypeError(f"attempt to index a {self.type_name()} value")
         return None
 
     def len(self, caller: LuaCallable | None = None) -> int:
@@ -223,7 +225,7 @@ class Value:
         if self.is_string():
             assert type(self.value) is str
             return len(self.value)
-        return 0
+        raise TypeError(f"attempt to get length of a {self.type_name()} value")
 
     def __hash__(self):
         # Distinguish booleans from numbers so that hash(true) != hash(1),

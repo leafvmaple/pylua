@@ -2189,6 +2189,53 @@ class TestClosureIterator(unittest.TestCase):
 
 
 class TestConformanceRegressions(unittest.TestCase):
+    def test_numeric_string_coercion_does_not_mutate_local(self):
+        out = run_lua_lines("local x='2'; print(x+1); print(type(x),x)")
+        self.assertEqual(out, ["3", "string\t2"])
+
+    def test_invalid_table_key_raises(self):
+        with self.assertRaisesRegex(RuntimeError, "table index is nil"):
+            run_lua("local t={}; t[nil]=1")
+
+    def test_invalid_index_raises(self):
+        with self.assertRaisesRegex(TypeError, "attempt to index a number"):
+            run_lua("local x=3; print(x.foo)")
+
+    def test_invalid_length_raises(self):
+        with self.assertRaisesRegex(TypeError, "attempt to get length of a number"):
+            run_lua("print(#1)")
+
+    def test_invalid_concatenation_raises(self):
+        with self.assertRaisesRegex(TypeError, "attempt to concatenate a boolean"):
+            run_lua("print('a'..true)")
+
+    def test_invalid_order_comparison_raises(self):
+        with self.assertRaisesRegex(TypeError, "attempt to compare number with string"):
+            run_lua("print(1<'2')")
+
+    def test_concat_metamethod(self):
+        out = run_lua_lines("""
+            local mt={__concat=function(a,b) return "joined" end}
+            print(setmetatable({},mt)..true)
+        """)
+        self.assertEqual(out, ["joined"])
+
+    def test_comparison_metamethod_uses_lua_truthiness(self):
+        out = run_lua_lines("""
+            local mt={__lt=function(a,b) return "" end}
+            local a=setmetatable({},mt)
+            local b=setmetatable({},mt)
+            print(a<b)
+        """)
+        self.assertEqual(out, ["true"])
+
+    def test_division_by_zero_uses_ieee_float(self):
+        out = run_lua_lines("print(1/0, 0/0)")
+        self.assertEqual(out, ["inf\tnan"])
+
+    def test_fractional_power_of_negative_is_nan(self):
+        self.assertEqual(run_lua_lines("print((-1)^0.5)"), ["nan"])
+
     def test_local_initializer_uses_outer_scope(self):
         out = run_lua_lines("local x=10; do local x=x; print(x) end")
         self.assertEqual(out, ["10"])

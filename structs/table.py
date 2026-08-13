@@ -38,6 +38,8 @@ class Table:
         return self._map.get(key, None)
 
     def set(self, key: int | Value, value: Value):
+        if not isinstance(key, int) and key.is_nil():
+            raise RuntimeError("table index is nil")
         int_key = key if isinstance(key, int) else key.get_integer()
         if value.is_nil():
             if int_key is not None:
