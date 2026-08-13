@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 
-from cli import compile_lua, execute_lua
+from cli import compile_from_source, compile_lua, execute_lua
 
 
 class TestBasic(unittest.TestCase):
@@ -67,6 +67,13 @@ class TestBasic(unittest.TestCase):
         finally:
             if os.path.exists(lua_file):
                 os.remove(lua_file)
+
+    def test_parser_rejects_trailing_tokens(self):
+        with self.assertRaisesRegex(SyntaxError, "expected 'EOF'"):
+            compile_from_source("print(1) end print(2)")
+
+    def test_return_allows_optional_semicolon(self):
+        self.assertIsNotNone(compile_from_source("return 1;"))
 
 
 if __name__ == "__main__":

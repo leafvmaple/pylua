@@ -169,9 +169,12 @@ class FuncInfo:
                 del self.loc_names[local_var.name]
         self.scope_depth -= 1
 
-    def add_local_var(self, name: str) -> LocalVarInfo:
+    def add_local_var(self, name: str, reg_idx: int | None = None) -> LocalVarInfo:
         """Add a new local variable to the current scope."""
-        reg_idx = self.alloc_reg()
+        if reg_idx is None:
+            reg_idx = self.alloc_reg()
+        elif reg_idx >= self.used_regs:
+            raise ValueError("Local variable register must already be allocated")
         local_var = LocalVarInfo(name, reg_idx, self.scope_depth)
         self.loc_vars.append(local_var)
         self.loc_names.setdefault(name, []).append(local_var)

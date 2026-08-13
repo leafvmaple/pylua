@@ -990,7 +990,8 @@ class TestMetatables(unittest.TestCase):
 
     def test_add_metamethod(self):
         out = run_lua_lines("""
-            local mt = {
+            local mt
+            mt = {
                 __add = function(a, b)
                     return setmetatable({value = a.value + b.value}, mt)
                 end
@@ -1054,7 +1055,8 @@ class TestMetatables(unittest.TestCase):
 
     def test_sub_metamethod(self):
         out = run_lua_lines("""
-            local mt = {
+            local mt
+            mt = {
                 __sub = function(a, b)
                     return setmetatable({value = a.value - b.value}, mt)
                 end
@@ -1067,7 +1069,8 @@ class TestMetatables(unittest.TestCase):
 
     def test_mul_metamethod(self):
         out = run_lua_lines("""
-            local mt = {
+            local mt
+            mt = {
                 __mul = function(a, b)
                     return setmetatable({value = a.value * b.value}, mt)
                 end
@@ -1080,7 +1083,8 @@ class TestMetatables(unittest.TestCase):
 
     def test_unm_metamethod(self):
         out = run_lua_lines("""
-            local mt = {
+            local mt
+            mt = {
                 __unm = function(a)
                     return setmetatable({value = -a.value}, mt)
                 end
@@ -2182,6 +2186,37 @@ class TestClosureIterator(unittest.TestCase):
             print(sum)
         """)
         self.assertEqual(out, ["60"])
+
+
+class TestConformanceRegressions(unittest.TestCase):
+    def test_local_initializer_uses_outer_scope(self):
+        out = run_lua_lines("local x=10; do local x=x; print(x) end")
+        self.assertEqual(out, ["10"])
+
+    def test_assignment_resolves_table_lvalues_before_rhs(self):
+        out = run_lua_lines("local i=1; local a={}; i,a[i]=2,10; print(i,a[1],a[2])")
+        self.assertEqual(out, ["2\t10\tnil"])
+
+    def test_vararg_expands_in_local_declaration(self):
+        out = run_lua_lines("function f(...) local a,b=...; print(a,b) end; f(10,20)")
+        self.assertEqual(out, ["10\t20"])
+
+    def test_constructor_preserves_field_evaluation_order(self):
+        out = run_lua_lines("""
+            local i=0
+            function f(x) i=i+1; print(x,i); return i end
+            local t={f("a"), k=f("b"), f("c")}
+            print(t[1],t.k,t[2])
+        """)
+        self.assertEqual(out, ["a\t1", "b\t2", "c\t3", "1\t2\t3"])
+
+    def test_constructor_open_field_respects_prior_hash_override(self):
+        out = run_lua_lines("""
+            function values() return "tail-1", "tail-2" end
+            local t={"array", [1]="hash", values()}
+            print(t[1],t[2],t[3])
+        """)
+        self.assertEqual(out, ["array\ttail-1\ttail-2"])
 
 
 if __name__ == "__main__":

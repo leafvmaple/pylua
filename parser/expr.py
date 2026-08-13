@@ -490,46 +490,55 @@ class TableConstructorExpr(Expr):
                 val_exps.append(exp)
 
     def codegen(self, info: FuncInfo, reg: int, cnt: int = 1):
-        # Separate array-style (key is None) and hash-style entries
-        array_vals: list[Expr] = []
-        hash_keys: list[Expr] = []
-        hash_vals: list[Expr] = []
-        for key, val in zip(self.key_exps, self.val_exps, strict=True):
-            if key is None:
-                array_vals.append(val)
-            else:
-                hash_keys.append(key)
-                hash_vals.append(val)
+        array_count = sum(key is None for key in self.key_exps)
+        hash_count = len(self.key_exps) - array_count
+        CodegenInst.new_table(info, reg, array_count, hash_count)
 
-        CodegenInst.new_table(info, reg, len(array_vals), len(hash_keys))
+        fields_per_flush = 50
+        pending_regs: list[int] = []
+        array_index = 0
+        block = 1
+        last_field = len(self.val_exps) - 1
+        for field_index, (key, val) in enumerate(zip(self.key_exps, self.val_exps, strict=True)):
+            if key is not None:
+                key_reg = info.alloc_reg()
+                key.codegen(info, key_reg)
+                val_reg = info.alloc_reg()
+                val.codegen(info, val_reg)
+                CodegenInst.set_table(info, reg, key_reg, val_reg)
+                info.free_regs(2)
+                continue
 
-        # Emit hash-style entries with SETTABLE
-        for key, val in zip(hash_keys, hash_vals, strict=True):
-            key_reg = info.alloc_reg()
-            key.codegen(info, key_reg)
+            array_index += 1
+            open_last = field_index == last_field and isinstance(val, (FuncCallExpr, VarargExpr))
+            if open_last:
+                # SETLIST consumes open results from A+1 onward. Move this
+                # batch's already evaluated values into place before the call.
+                pending_count = len(pending_regs)
+                for i, source_reg in enumerate(pending_regs, 1):
+                    CodegenInst.move(info, reg + i, source_reg)
+                info.free_regs(pending_count)
+                pending_regs.clear()
+                val.codegen(info, reg + pending_count + 1, -1)
+                CodegenInst.set_list(info, reg, 0, block)
+                continue
+
             val_reg = info.alloc_reg()
             val.codegen(info, val_reg)
-            CodegenInst.set_table(info, reg, key_reg, val_reg)
-            info.free_regs(2)
+            pending_regs.append(val_reg)
+            if len(pending_regs) == fields_per_flush:
+                for i, source_reg in enumerate(pending_regs, 1):
+                    CodegenInst.move(info, reg + i, source_reg)
+                CodegenInst.set_list(info, reg, len(pending_regs), block)
+                info.free_regs(len(pending_regs))
+                pending_regs.clear()
+                block += 1
 
-        # Emit array-style entries with SETLIST (batches of 50)
-        fields_per_flush = 50
-        for batch_start in range(0, len(array_vals), fields_per_flush):
-            batch = array_vals[batch_start : batch_start + fields_per_flush]
-            # SETLIST expects values in reg+1..reg+n, so force allocation there
-            saved_used = info.used_regs
-            info.used_regs = reg + 1
-            batch_regs = info.alloc_regs(len(batch))
-            open_last = (
-                batch_start + len(batch) == len(array_vals)
-                and self.key_exps[-1] is None
-                and isinstance(batch[-1], (FuncCallExpr, VarargExpr))
-            )
-            for i, val in enumerate(batch):
-                val.codegen(info, batch_regs + i, -1 if open_last and i == len(batch) - 1 else 1)
-            block = batch_start // fields_per_flush + 1  # 1-based block number
-            CodegenInst.set_list(info, reg, 0 if open_last else len(batch), block)
-            info.used_regs = saved_used
+        if pending_regs:
+            for i, source_reg in enumerate(pending_regs, 1):
+                CodegenInst.move(info, reg + i, source_reg)
+            CodegenInst.set_list(info, reg, len(pending_regs), block)
+            info.free_regs(len(pending_regs))
 
 
 class TableAccessExpr(Expr):

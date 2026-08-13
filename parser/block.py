@@ -65,6 +65,7 @@ class Parser:
     @classmethod
     def from_lexer(cls, lexer: Lexer) -> Parser:
         block = Block.parse(lexer)
+        lexer.consume("EOF")
 
         return cls(block)
 

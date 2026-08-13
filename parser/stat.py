@@ -8,7 +8,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from .expr import Expr, FuncCallExpr, FuncDefExpr, NameExpr, TableAccessExpr, TrueExpr
+from .expr import (
+    Expr,
+    FuncCallExpr,
+    FuncDefExpr,
+    NameExpr,
+    TableAccessExpr,
+    TrueExpr,
+    VarargExpr,
+)
 from .lexer import Lexer
 
 if TYPE_CHECKING:
@@ -126,8 +134,12 @@ class ReturnStmt(Stmt):
     def parse_list(lexer: Lexer) -> list[Expr]:
         lexer.consume("RETURN")
         if (token := lexer.current()) and token.type != "SEMICOLON" and not token.is_end():
-            return Expr.parse_list(lexer)
-        return []
+            exprs = Expr.parse_list(lexer)
+        else:
+            exprs = []
+        if lexer.current().type == "SEMICOLON":
+            lexer.consume()
+        return exprs
 
 
 class FuncCallStmt(Stmt):
@@ -551,17 +563,29 @@ class LocalVarDeclStat(Stmt):
         return cls(var_names, exps)
 
     def codegen(self, info: FuncInfo):
-        for i in range(len(self.var_names)):
-            var = info.add_local_var(self.var_names[i].name)
-            if i == len(self.exprs) - 1 and type(self.exprs[i]) is FuncCallExpr:
-                for j in range(i + 1, len(self.var_names)):
-                    info.add_local_var(self.var_names[j].name)
-                self.exprs[i].codegen(info, var.reg_idx, len(self.var_names) - i)
-                break
-            if i < len(self.exprs):
-                self.exprs[i].codegen(info, var.reg_idx)
-            else:
-                CodegenInst.load_nil(info, var.reg_idx, 1)
+        num_vars = len(self.var_names)
+        num_exprs = len(self.exprs)
+        base = info.used_regs
+        temp_count = max(num_vars, num_exprs)
+        info.alloc_regs(temp_count)
+
+        for i, expr in enumerate(self.exprs):
+            is_open = i == num_exprs - 1 and isinstance(expr, (FuncCallExpr, VarargExpr))
+            wanted = max(0, num_vars - i) if is_open else 1
+            expr.codegen(info, base + i, wanted)
+
+        if num_vars > num_exprs and not (
+            self.exprs and isinstance(self.exprs[-1], (FuncCallExpr, VarargExpr))
+        ):
+            CodegenInst.load_nil(info, base + num_exprs, num_vars - num_exprs)
+
+        if temp_count > num_vars:
+            info.free_regs(temp_count - num_vars)
+
+        # Initializers cannot see the locals declared by this statement. Once
+        # evaluated, their result registers become the new locals' storage.
+        for i, name in enumerate(self.var_names):
+            info.add_local_var(name.name, base + i)
 
 
 class AssignStmt(Stmt):
@@ -607,10 +631,23 @@ class AssignStmt(Stmt):
         num_exprs = len(self.expr_list)
         num_vars = len(self.var_list)
 
+        # Resolve indexed lvalues before evaluating any right-hand expression.
+        table_targets: dict[int, tuple[int, int]] = {}
+        lvalue_base = info.used_regs
+        for i, var in enumerate(self.var_list):
+            if not isinstance(var, TableAccessExpr):
+                continue
+            prefix_reg = info.alloc_reg()
+            var.prefix_expr.codegen(info, prefix_reg)
+            key_reg = info.alloc_reg()
+            var.key_expr.codegen(info, key_reg)
+            table_targets[i] = (prefix_reg, key_reg)
+
+        rhs_base = info.used_regs
         exp_regs: list[int] = []
         for i, expr in enumerate(self.expr_list):
             reg = info.alloc_reg()
-            if i == num_exprs - 1 and isinstance(expr, FuncCallExpr):
+            if i == num_exprs - 1 and isinstance(expr, (FuncCallExpr, VarargExpr)):
                 # Lua expands only the last function call in assignment context.
                 want = max(1, num_vars - i)
                 for _ in range(want - 1):
@@ -642,12 +679,13 @@ class AssignStmt(Stmt):
                         idx = info.idx_of_const(var.name)
                         CodegenInst.set_global(info, val_reg, idx)
             elif isinstance(var, TableAccessExpr):
-                var.codegen_set(info, val_reg)
+                prefix_reg, key_reg = table_targets[i]
+                CodegenInst.set_table(info, prefix_reg, key_reg, val_reg)
             else:
                 raise NotImplementedError(f"Assignment to {type(var).__name__} not implemented.")
 
-        for _ in exp_regs:
-            info.free_reg()
+        info.free_regs(info.used_regs - rhs_base)
+        info.free_regs(rhs_base - lvalue_base)
 
 
 class LocalFuncDefStat(Stmt):
