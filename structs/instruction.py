@@ -80,6 +80,8 @@ class Instruction:
 
         if instruction is not None:
             self._opcode_idx = instruction & 0x3F
+            if self._opcode_idx >= len(OPCODES):
+                raise ValueError(f"Invalid Lua 5.1 opcode: {self._opcode_idx}")
             self._opcode = OPCODES[self._opcode_idx]
             if self._opcode.mode == OpMode.iABC:
                 self._a, self._b, self._c = bitset_to_abc(instruction)
@@ -118,6 +120,10 @@ class Instruction:
 
     def op_name(self) -> str:
         return self._opcode.name
+
+    @property
+    def opcode(self) -> OpCode:
+        return self._opcode
 
     def abc(self) -> tuple[int, int, int]:
         """Return A, B, C arguments, with None as default for missing values."""

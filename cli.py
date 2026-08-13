@@ -47,7 +47,7 @@ def compile_from_source(source: str, name: str = "<string>") -> Proto:
     """
     lexer = Lexer.from_string(source, name)
     parser = Parser.from_lexer(lexer)
-    info = parser.to_info()
+    info = parser.to_info(name, max(1, source.count("\n") + 1))
     return info.to_proto()
 
 
@@ -62,7 +62,7 @@ def compile_from_file(filepath: str) -> Proto:
     """
     lexer = Lexer.from_file(filepath)
     parser = Parser.from_lexer(lexer)
-    info = parser.to_info()
+    info = parser.to_info(filepath, max(1, lexer.chunk.count("\n") + 1))
     return info.to_proto()
 
 
@@ -89,7 +89,7 @@ def compile_lua(
     try:
         lexer = Lexer.from_file(source_file)
         parser = Parser.from_lexer(lexer)
-        info = parser.to_info()
+        info = parser.to_info(source_file, max(1, lexer.chunk.count("\n") + 1))
 
         if parse_only:
             print(f"luac: {source_file} parsed successfully")

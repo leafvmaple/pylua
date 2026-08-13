@@ -62,8 +62,9 @@ def write_value(file: Writer, value: Value) -> None:
         raise ValueError(f"Cannot serialize value type: {type(value.value)}")
 
 
-def write_proto(file: Writer, proto: Proto) -> None:
-    file.write_string(proto.source)
+def write_proto(file: Writer, proto: Proto, parent_source: str | None = None) -> None:
+    source = None if proto.source == parent_source else (proto.source or None)
+    file.write_nullable_string(source)
     file.write_uint32(proto.line_defined)
     file.write_uint32(proto.last_line_defined)
     file.write_uint8(proto.num_upvalues)
@@ -84,7 +85,7 @@ def write_proto(file: Writer, proto: Proto) -> None:
     # Sub-protos
     file.write_uint32(len(proto.protos))
     for sub_proto in proto.protos:
-        write_proto(file, sub_proto)
+        write_proto(file, sub_proto, proto.source)
 
     # Debug info
     write_debug(file, proto.debug)

@@ -43,15 +43,22 @@ class Reader:
             return self.read_uint64()
         raise ValueError(f"Unsupported size_t width: {self.size_len}")
 
-    def read_string(self) -> str:
+    def read_nullable_string(self) -> str | None:
         length = self.read_size_t()
         if length == 0:
-            return ""
+            return None
         if length > self.MAX_STRING_SIZE:
             raise ValueError(f"Bytecode string is too large: {length} bytes")
         string_bytes = self.read_bytes(length - 1)  # Exclude null terminator
-        self.read_bytes(1)  # Read and discard null terminator
+        if self.read_bytes(1) != b"\x00":
+            raise ValueError("Bytecode string is missing its null terminator")
         return string_bytes.decode("utf-8")
+
+    def read_string(self) -> str:
+        value = self.read_nullable_string()
+        if value is None:
+            raise ValueError("Unexpected null bytecode string")
+        return value
 
 
 class Writer:
@@ -88,9 +95,9 @@ class Writer:
         else:
             raise ValueError(f"Unsupported size_t width: {self.size_len}")
 
-    def write_string(self, value: str) -> None:
+    def write_nullable_string(self, value: str | None) -> None:
         """Write a string to the file."""
-        if not value:
+        if value is None:
             self.write_size_t(0)
             return
         string_bytes = value.encode("utf-8")
@@ -98,3 +105,6 @@ class Writer:
         self.write_size_t(length)
         self.file.write(string_bytes)
         self.file.write(b"\x00")  # Write null terminator
+
+    def write_string(self, value: str) -> None:
+        self.write_nullable_string(value)

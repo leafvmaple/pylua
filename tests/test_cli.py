@@ -36,6 +36,21 @@ class TestCLI(unittest.TestCase):
                 self.assertEqual(current.debug.loc_vars, [])
                 self.assertEqual(current.debug.upvalues, [])
 
+    def test_compiler_populates_debug_records_before_strip(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".lua", delete=False) as source:
+            source.write("local x=1\nlocal function f() return x end\nprint(f())")
+            source_path = source.name
+        try:
+            proto = compile_lua(source_path)
+            self.assertIsNotNone(proto)
+            assert proto is not None
+            self.assertEqual(proto.source, source_path)
+            self.assertEqual(len(proto.debug.line_infos), len(proto.codes))
+            self.assertTrue(proto.debug.loc_vars)
+            self.assertEqual(proto.protos[0].debug.upvalues, ["x"])
+        finally:
+            os.remove(source_path)
+
     def test_repl_preserves_globals_between_lines(self):
         output = io.StringIO()
         with (

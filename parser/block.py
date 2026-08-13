@@ -69,8 +69,10 @@ class Parser:
 
         return cls(block)
 
-    def to_info(self) -> FuncInfo:
+    def to_info(self, source: str = "", last_line: int = 0) -> FuncInfo:
         info = FuncInfo()
+        info.source = source
+        info.last_line_defined = last_line
         self.block.codegen(info)
 
         # Only emit fallback RETURN if Block.codegen didn't already emit one

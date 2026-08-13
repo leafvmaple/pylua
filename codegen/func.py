@@ -14,20 +14,24 @@ class LocalVarInfo:
     reg_idx: int
     scope_depth: int
     captured: bool
+    start_pc: int
+    end_pc: int
 
-    def __init__(self, name: str, reg_idx: int, scope_depth: int):
+    def __init__(self, name: str, reg_idx: int, scope_depth: int, start_pc: int):
         self.name = name
         self.reg_idx = reg_idx
         self.scope_depth = scope_depth
         self.captured = False
+        self.start_pc = start_pc
+        self.end_pc = start_pc
 
     def to_local_var(self) -> LocalVar:
         from structs.function import LocalVar
 
         local_var = LocalVar()
         local_var.name = self.name
-        local_var.start_pc = 0
-        local_var.end_pc = 0
+        local_var.start_pc = self.start_pc
+        local_var.end_pc = self.end_pc
         return local_var
 
 
@@ -50,6 +54,9 @@ class FuncInfo:
 
     num_params: int
     is_vararg: bool
+    source: str
+    line_defined: int
+    last_line_defined: int
 
     constants: list[Const]
     used_regs: int
@@ -70,6 +77,9 @@ class FuncInfo:
         self.sub_funcs = []
         self.num_params = 0
         self.is_vararg = False
+        self.source = ""
+        self.line_defined = 0
+        self.last_line_defined = 0
         self.scope_depth = 0
         self.loc_vars = []
         self.loc_names = {}
@@ -88,7 +98,9 @@ class FuncInfo:
         from structs.value import Value
 
         proto = Proto()
-        # proto.source = source
+        proto.source = self.source
+        proto.line_defined = self.line_defined
+        proto.last_line_defined = self.last_line_defined
         proto.num_params = self.num_params
         proto.is_vararg = self.is_vararg
         proto.max_stack_size = self.max_regs
@@ -100,9 +112,15 @@ class FuncInfo:
 
         # Debug info
         debug = Debug()
+        active_locals = {id(local) for bindings in self.loc_names.values() for local in bindings}
         for local_var in self.loc_vars:
+            if id(local_var) in active_locals:
+                local_var.end_pc = len(self.insts)
             debug.loc_vars.append(local_var.to_local_var())
-        # debug.upvalues = list(self.upval_names.values())
+        debug.line_infos = [self.line_defined] * len(self.insts)
+        debug.upvalues = [
+            name for name, _ in sorted(self.upval_names.items(), key=lambda item: item[1].idx)
+        ]
         proto.debug = debug
 
         return proto
@@ -172,6 +190,7 @@ class FuncInfo:
         for local_var in reversed(self.loc_vars):
             if local_var.scope_depth != self.scope_depth:
                 continue
+            local_var.end_pc = self.current_pc()
             captured = captured or local_var.captured
             bindings = self.loc_names.get(local_var.name)
             if not bindings or bindings[-1] is not local_var:
@@ -192,7 +211,7 @@ class FuncInfo:
             reg_idx = self.alloc_reg()
         elif reg_idx >= self.used_regs:
             raise ValueError("Local variable register must already be allocated")
-        local_var = LocalVarInfo(name, reg_idx, self.scope_depth)
+        local_var = LocalVarInfo(name, reg_idx, self.scope_depth, self.current_pc())
         self.loc_vars.append(local_var)
         self.loc_names.setdefault(name, []).append(local_var)
         return local_var

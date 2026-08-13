@@ -94,9 +94,9 @@ def read_proto(file: Reader, parent: str | None = None, depth: int = 0) -> Proto
     if depth > MAX_PROTO_DEPTH:
         raise ValueError("Bytecode prototype nesting is too deep")
     proto = Proto()
-    proto.source = file.read_string()
+    source = file.read_nullable_string()
+    proto.source = source if source is not None else (parent or "")
     if parent is not None:
-        proto.source = parent
         proto.type = "function"
     else:
         proto.type = "main"
@@ -123,7 +123,88 @@ def read_proto(file: Reader, parent: str | None = None, depth: int = 0) -> Proto
     # Debug info
     proto.debug = read_debug(file)
 
+    validate_proto(proto)
     for pc, code in enumerate(proto.codes):
         code.update_info(pc, proto.consts, proto.debug.upvalues)
 
     return proto
+
+
+def _validate_rk(proto: Proto, operand: int, pc: int, label: str) -> None:
+    if operand >= 256:
+        if operand - 256 >= len(proto.consts):
+            raise ValueError(f"Invalid constant index in {label} at instruction {pc + 1}")
+    elif operand >= proto.max_stack_size:
+        raise ValueError(f"Invalid register in {label} at instruction {pc + 1}")
+
+
+def validate_proto(proto: Proto) -> None:
+    """Validate executable indices before a loaded prototype reaches the VM."""
+    from codegen.inst import OpArgK, OpArgR, OpMode
+
+    if proto.max_stack_size > 250:
+        raise ValueError(f"Invalid max stack size: {proto.max_stack_size}")
+    if proto.num_params > proto.max_stack_size:
+        raise ValueError("Function parameters exceed max stack size")
+
+    code_count = len(proto.codes)
+    for pc, inst in enumerate(proto.codes):
+        opcode = inst.opcode
+        if opcode.mode == OpMode.iABC:
+            a, b, c = inst.abc()
+            uses_a_register = inst.op_name() not in ("RETURN", "CLOSE") or b != 1
+            if uses_a_register and a >= proto.max_stack_size:
+                raise ValueError(f"Invalid destination register at instruction {pc + 1}")
+            for label, mode, operand in (("B", opcode.argb, b), ("C", opcode.argc, c)):
+                if mode == OpArgR and operand >= proto.max_stack_size:
+                    raise ValueError(f"Invalid register {label} at instruction {pc + 1}")
+                if mode == OpArgK:
+                    _validate_rk(proto, operand, pc, label)
+
+            if inst.op_name() in ("GETUPVAL", "SETUPVAL") and b >= proto.num_upvalues:
+                raise ValueError(f"Invalid upvalue index at instruction {pc + 1}")
+            if inst.op_name() == "LOADNIL" and b >= proto.max_stack_size:
+                raise ValueError(f"Invalid LOADNIL range at instruction {pc + 1}")
+            if inst.op_name() == "SELF" and a + 1 >= proto.max_stack_size:
+                raise ValueError(f"Invalid SELF register range at instruction {pc + 1}")
+            if inst.op_name() == "CONCAT" and (
+                b >= proto.max_stack_size or c >= proto.max_stack_size or b > c
+            ):
+                raise ValueError(f"Invalid CONCAT range at instruction {pc + 1}")
+            if (
+                inst.op_name() in ("CALL", "TAILCALL")
+                and b != 0
+                and a + b - 1 > proto.max_stack_size
+            ):
+                raise ValueError(f"Invalid call register range at instruction {pc + 1}")
+            if inst.op_name() == "RETURN" and b > 1 and a + b - 1 > proto.max_stack_size:
+                raise ValueError(f"Invalid return register range at instruction {pc + 1}")
+            if inst.op_name() == "TFORLOOP" and a + 5 >= proto.max_stack_size:
+                raise ValueError(f"Invalid TFORLOOP register range at instruction {pc + 1}")
+            if inst.op_name() == "SETLIST" and b != 0 and a + b >= proto.max_stack_size:
+                raise ValueError(f"Invalid SETLIST register range at instruction {pc + 1}")
+            if inst.op_name() == "VARARG" and b > 1 and a + b - 2 >= proto.max_stack_size:
+                raise ValueError(f"Invalid VARARG register range at instruction {pc + 1}")
+        elif opcode.mode == OpMode.iABx:
+            a, bx = inst.abx()
+            if a >= proto.max_stack_size:
+                raise ValueError(f"Invalid destination register at instruction {pc + 1}")
+            if inst.op_name() in ("LOADK", "GETGLOBAL", "SETGLOBAL"):
+                if bx >= len(proto.consts):
+                    raise ValueError(f"Invalid constant index at instruction {pc + 1}")
+                if inst.op_name() != "LOADK" and not proto.consts[bx].is_string():
+                    raise ValueError(f"Global name must be a string at instruction {pc + 1}")
+            elif inst.op_name() == "CLOSURE" and bx >= len(proto.protos):
+                raise ValueError(f"Invalid prototype index at instruction {pc + 1}")
+        elif opcode.mode == OpMode.iAsBx:
+            a, sbx = inst.asbx()
+            if inst.op_name() in ("FORLOOP", "FORPREP") and a + 3 >= proto.max_stack_size:
+                raise ValueError(f"Invalid numeric-for register range at instruction {pc + 1}")
+            if inst.op_name() == "JMP" and a > proto.max_stack_size:
+                raise ValueError(f"Invalid JMP close register at instruction {pc + 1}")
+            target = pc + 1 + sbx
+            if target < 0 or target > code_count:
+                raise ValueError(f"Invalid jump target at instruction {pc + 1}")
+
+    for child in proto.protos:
+        validate_proto(child)

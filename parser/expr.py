@@ -717,6 +717,9 @@ class FuncDefExpr(Expr):
 
     def codegen(self, info: FuncInfo, reg: int, cnt: int = 1):
         func_info = FuncInfo(parent=info)
+        func_info.source = info.source
+        func_info.line_defined = info.line_defined
+        func_info.last_line_defined = info.last_line_defined
         func_info.num_params = len(self.param_names)
         func_info.is_vararg = self.is_vararg
 
