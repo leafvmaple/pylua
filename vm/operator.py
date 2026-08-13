@@ -370,7 +370,11 @@ class Operator:
 
     @staticmethod
     def JMP(inst: Instruction, state: LuaState):
-        _, sbx = inst.asbx()
+        a, sbx = inst.asbx()
+        if a != 0:
+            frame = state.call_info[-1]
+            assert type(frame) is LClosure
+            frame.close_upvalues(a - 1)
         state.jump(sbx)
 
     @staticmethod
@@ -498,7 +502,10 @@ class Operator:
 
     @staticmethod
     def CLOSE(inst: Instruction, state: LuaState):
-        pass
+        a, _, _ = inst.abc()
+        frame = state.call_info[-1]
+        assert type(frame) is LClosure
+        frame.close_upvalues(a)
 
     @staticmethod
     def CLOSURE(inst: Instruction, state: LuaState):

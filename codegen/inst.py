@@ -128,8 +128,10 @@ class CodegenInst:
         info.emit_abc(OP["SETLIST"], a, b, c)
 
     @staticmethod
-    def jmp(info: FuncInfo, sbx: int):
-        info.emit_asbx(OP["JMP"], 0, sbx)
+    def jmp(info: FuncInfo, sbx: int, close_from: int | None = None):
+        # Lua 5.1 JMP closes upvalues at registers >= A-1 when A is non-zero.
+        a = 0 if close_from is None else close_from + 1
+        info.emit_asbx(OP["JMP"], a, sbx)
 
     @staticmethod
     def ret(info: FuncInfo, a: int, b: int):

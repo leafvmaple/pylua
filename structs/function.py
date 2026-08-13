@@ -90,11 +90,9 @@ class Proto:
 class Upvalue:
     """A captured variable shared between closures.
 
-    Holds a reference to a frame's register list plus an index, so reads and
-    writes through the upvalue stay in sync with the owning frame (and with any
-    sibling closures that captured the same variable). Frame register lists are
-    allocated fresh per activation and outlive the frame via this reference, so
-    no explicit "close" step is required in this VM.
+    Open upvalues reference an activation's register list. Closing an upvalue
+    moves the current value into a private one-element cell so the register can
+    be safely reused while sibling closures keep sharing the same object.
     """
 
     __slots__ = ("stack", "index")
@@ -108,6 +106,10 @@ class Upvalue:
 
     def set(self, value: Value) -> None:
         self.stack[self.index] = value
+
+    def close(self) -> None:
+        self.stack = [self.get()]
+        self.index = 0
 
 
 class Closure:
@@ -149,6 +151,12 @@ class LClosure(Closure):
             upval = Upvalue(self.stack, index)
             self.open_upvals[index] = upval
         return upval
+
+    def close_upvalues(self, from_index: int) -> None:
+        for index in sorted(self.open_upvals, reverse=True):
+            if index < from_index:
+                continue
+            self.open_upvals.pop(index).close()
 
     def fetch(self) -> Instruction | None:
         if self.pc >= len(self.func.codes):

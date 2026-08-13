@@ -13,11 +13,13 @@ class LocalVarInfo:
     name: str
     reg_idx: int
     scope_depth: int
+    captured: bool
 
     def __init__(self, name: str, reg_idx: int, scope_depth: int):
         self.name = name
         self.reg_idx = reg_idx
         self.scope_depth = scope_depth
+        self.captured = False
 
     def to_local_var(self) -> LocalVar:
         from structs.function import LocalVar
@@ -58,6 +60,8 @@ class FuncInfo:
     loc_names: dict[str, list[LocalVarInfo]]
     upval_names: dict[str, UpvalueInfo]
     break_jmps_stack: list[list[int]]
+    scope_bases: list[int]
+    loop_base_regs: list[int]
 
     insts: list[Instruction]
 
@@ -71,6 +75,8 @@ class FuncInfo:
         self.loc_names = {}
         self.upval_names = {}
         self.break_jmps_stack = []
+        self.scope_bases = []
+        self.loop_base_regs = []
         self.insts = []
         self.constants = []
         self._const_index: dict[Const, int] = {}  # O(1) constant lookup
@@ -122,6 +128,7 @@ class FuncInfo:
             loc_var = self.parent.get_local_var(name)
             if loc_var:
                 loc_idx = loc_var.reg_idx
+                loc_var.captured = True
             else:
                 upval_idx = self.parent.idx_of_upval(name)
         if loc_idx is not None or upval_idx is not None:
@@ -154,19 +161,29 @@ class FuncInfo:
     def enter_scope(self) -> None:
         """Enter a new variable scope."""
         self.scope_depth += 1
+        self.scope_bases.append(self.used_regs)
 
     def exit_scope(self) -> None:
         """Exit the current variable scope."""
         assert self.scope_depth > 0, "No scope to exit"
+        assert self.scope_bases, "Missing scope register base"
+        base_reg = self.scope_bases.pop()
+        captured = False
         for local_var in reversed(self.loc_vars):
             if local_var.scope_depth != self.scope_depth:
                 continue
+            captured = captured or local_var.captured
             bindings = self.loc_names.get(local_var.name)
             if not bindings or bindings[-1] is not local_var:
                 continue
             bindings.pop()
             if not bindings:
                 del self.loc_names[local_var.name]
+        if captured:
+            from .inst import CodegenInst
+
+            CodegenInst.close(self, base_reg)
+        self.used_regs = base_reg
         self.scope_depth -= 1
 
     def add_local_var(self, name: str, reg_idx: int | None = None) -> LocalVarInfo:
@@ -237,6 +254,12 @@ class FuncInfo:
     def enter_loop(self) -> None:
         """Begin a loop scope for tracking break jumps."""
         self.break_jmps_stack.append([])
+        self.loop_base_regs.append(self.used_regs)
+
+    def current_loop_base(self) -> int:
+        if not self.loop_base_regs:
+            raise SyntaxError("break statement outside loop")
+        return self.loop_base_regs[-1]
 
     def emit_break_jmp(self) -> None:
         """Record a pending break jump (latest JMP instruction)."""
@@ -249,6 +272,7 @@ class FuncInfo:
         if not self.break_jmps_stack:
             return
         break_jmps = self.break_jmps_stack.pop()
+        self.loop_base_regs.pop()
         for jmp_pc in break_jmps:
             self.insts[jmp_pc].set_sbx(exit_pc - jmp_pc - 1)
 

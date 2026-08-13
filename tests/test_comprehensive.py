@@ -2189,6 +2189,45 @@ class TestClosureIterator(unittest.TestCase):
 
 
 class TestConformanceRegressions(unittest.TestCase):
+    def test_sequential_scopes_reuse_registers(self):
+        source = ";".join(f"do local x{i}={i} end" for i in range(300))
+        proto = compile_from_source(source)
+        self.assertLess(proto.max_stack_size, 10)
+        LuaState(proto).run()
+
+    def test_closed_upvalue_survives_register_reuse(self):
+        out = run_lua_lines("""
+            local funcs={}
+            do local x=10; funcs[1]=function() return x end end
+            do local x=20; funcs[2]=function() return x end end
+            print(funcs[1](), funcs[2]())
+        """)
+        self.assertEqual(out, ["10\t20"])
+
+    def test_break_closes_upvalues_from_exited_scope(self):
+        out = run_lua_lines("""
+            local f
+            while true do
+                local x=42
+                f=function() return x end
+                break
+            end
+            do local x=99 end
+            print(f())
+        """)
+        self.assertEqual(out, ["42"])
+
+    def test_loop_body_closes_captured_local_each_iteration(self):
+        out = run_lua_lines("""
+            local funcs={}
+            for i=1,3 do
+                local x=i
+                funcs[i]=function() return x end
+            end
+            print(funcs[1](), funcs[2](), funcs[3]())
+        """)
+        self.assertEqual(out, ["1\t2\t3"])
+
     def test_numeric_string_coercion_does_not_mutate_local(self):
         out = run_lua_lines("local x='2'; print(x+1); print(type(x),x)")
         self.assertEqual(out, ["3", "string\t2"])

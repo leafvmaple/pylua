@@ -252,6 +252,7 @@ class LuaState:
         """Pop the current Lua frame and copy its results into the caller."""
         frame = self.call_info.pop()
         assert type(frame) is LClosure
+        frame.close_upvalues(0)
 
         if ret_count == -1:
             ret_count = len(frame.stack) - ret_start

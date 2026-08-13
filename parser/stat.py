@@ -125,7 +125,7 @@ class BreakStmt(Stmt):
 
     def codegen(self, info: FuncInfo):
         # Emit placeholder JMP and let enclosing loop patch it to loop end.
-        CodegenInst.jmp(info, 0)
+        CodegenInst.jmp(info, 0, close_from=info.current_loop_base())
         info.emit_break_jmp()
 
 
@@ -262,6 +262,7 @@ class RepeatStmt(Stmt):
         # Evaluate condition
         cond_reg = info.alloc_reg()
         self.exp.codegen(info, cond_reg)
+        info.free_reg()
         info.exit_scope()
 
         # Test condition: if true, skip JMP (exit loop); if false,
@@ -269,7 +270,6 @@ class RepeatStmt(Stmt):
         CodegenInst.test(info, cond_reg, 1)
         CodegenInst.jmp(info, start_pc - info.current_pc() - 1)
 
-        info.free_reg()
         info.exit_loop(info.current_pc())
 
 
@@ -432,15 +432,16 @@ class ForNumStat(Stmt):
             # Default step is 1
             CodegenInst.load_k(info, step_reg, 1)
 
-        # Add loop variable to scope
-        info.add_local_var(self.varname.name)
-
         # FORPREP instruction
         pc_forprep = info.current_pc()
         CodegenInst.forprep(info, idx_reg, 0)  # Placeholder jump
 
-        # Loop body
+        # The visible loop variable/body scope is closed on every iteration;
+        # hidden index/limit/step registers remain live for FORLOOP.
+        info.enter_scope()
+        info.add_local_var(self.varname.name)
         self.block.codegen(info)
+        info.exit_scope()
 
         # FORLOOP instruction
         pc_forloop = info.current_pc()
@@ -495,7 +496,9 @@ class ForInStat(Stmt):
         )
         iter_decl.codegen(info)
 
-        # Add loop variables to scope
+        # Loop variables and body locals are closed on every iteration, while
+        # the hidden generator/state/control locals stay live.
+        info.enter_scope()
         for varname in self.var_names:
             info.add_local_var(varname.name)
 
@@ -506,6 +509,7 @@ class ForInStat(Stmt):
 
         # Loop body
         self.block.codegen(info)
+        info.exit_scope()
 
         # TFORLOOP instruction
         pc_tforloop = info.current_pc()
